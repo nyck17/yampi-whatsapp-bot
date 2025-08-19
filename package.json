@@ -1,0 +1,26 @@
+{
+  "name": "yampi-whatsapp-automation",
+  "version": "1.0.0",
+  "description": "Automação gratuita para cadastrar produtos na Yampi via WhatsApp",
+  "main": "servidor.js",
+  "scripts": {
+    "start": "node servidor.js",
+    "dev": "node servidor.js"
+  },
+  "keywords": [
+    "yampi",
+    "whatsapp",
+    "automation",
+    "ecommerce",
+    "free"
+  ],
+  "author": "Claude Assistant",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
