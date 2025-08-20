@@ -168,31 +168,15 @@ function extrairDados(message) {
     return dados;
 }
 
-// Criar produto na Yampi - VERSÃO CORRIGIDA COM HEADERS CORRETOS
+// Criar produto na Yampi - VERSÃO ULTRA SIMPLIFICADA
 async function criarProdutoYampi(dados) {
-    // Preparar dados do produto no formato COMPLETO da Yampi
+    // Preparar dados MÍNIMOS do produto
     const produtoData = {
         name: dados.nome,
-        description: dados.descricao || `${dados.nome} - Cadastrado via WhatsApp`,
-        price: dados.preco.toFixed(2),
-        sale_price: dados.preco.toFixed(2),
-        cost_price: "0.00",
-        sku: gerarSKU(dados.nome),
-        barcode: "",
-        quantity: Object.values(dados.estoque).reduce((a, b) => a + b, 0),
-        availability: 1, // 1 = disponível
-        manage_stock: true,
-        status: 1, // 1 = ativo
-        weight: 0.1,
-        height: 10,
-        width: 10,
-        depth: 10,
-        seo_title: dados.nome,
-        seo_description: dados.descricao || dados.nome,
-        seo_keywords: dados.categoria || "produto"
+        price: dados.preco.toFixed(2)
     };
     
-    console.log('📦 Criando produto:', produtoData.name);
+    console.log('📦 Criando produto (versão simples):', produtoData);
     console.log('URL:', `${config.YAMPI_API}/catalog/products`);
     
     try {
@@ -209,23 +193,30 @@ async function criarProdutoYampi(dados) {
             }
         );
         
-        console.log('✅ Produto criado com sucesso! ID:', response.data.data.id);
-        return response.data.data;
+        console.log('✅ Produto criado com sucesso! ID:', response.data.data?.id || response.data.id);
+        return response.data.data || response.data;
         
     } catch (error) {
         console.error('❌ Erro ao criar produto:', error.response?.data || error.message);
         
-        // Log detalhado para debug
-        if (error.response?.status === 422) {
-            console.error('Erro de validação. Campos obrigatórios podem estar faltando.');
-            console.error('Dados enviados:', JSON.stringify(produtoData, null, 2));
-            console.error('Resposta da API:', JSON.stringify(error.response.data, null, 2));
+        // Log super detalhado para debug
+        if (error.response) {
+            console.error('Status:', error.response.status);
+            console.error('Headers:', error.response.headers);
+            console.error('Data completa:', JSON.stringify(error.response.data, null, 2));
+            console.error('Config da request:', {
+                url: error.config?.url,
+                method: error.config?.method,
+                headers: error.config?.headers,
+                data: error.config?.data
+            });
         }
         
         throw new Error(
             error.response?.data?.message || 
             error.response?.data?.error || 
-            'Erro ao criar produto na Yampi. Verifique os dados enviados.'
+            JSON.stringify(error.response?.data) ||
+            'Erro ao criar produto na Yampi'
         );
     }
 }
@@ -300,34 +291,44 @@ app.get('/test-yampi', async (req, res) => {
 // NOVO ENDPOINT - Teste rápido de criação
 app.get('/test-create', async (req, res) => {
     try {
-        const testProduct = {
-            nome: `Produto Teste ${Date.now()}`,
-            preco: 29.90,
-            descricao: 'Produto de teste criado automaticamente',
-            tamanhos: ['Único'],
-            estoque: { 'Único': 10 },
-            categoria: 'Testes'
+        // Produto SUPER SIMPLES para teste
+        const produtoData = {
+            name: `Teste API ${Date.now()}`,
+            price: "29.90"
         };
         
-        console.log('🧪 Criando produto de teste...');
-        const produto = await criarProdutoYampi(testProduct);
+        console.log('🧪 Tentando criar produto SIMPLES:', produtoData);
+        
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
         
         res.json({
             success: true,
-            message: '✅ Produto de teste criado com sucesso!',
-            produto: {
-                id: produto.id,
-                nome: produto.name,
-                sku: produto.sku,
-                preco: produto.price
-            }
+            message: '✅ Produto criado com sucesso!',
+            produto: response.data
         });
         
     } catch (error) {
+        console.error('Erro completo:', error.response?.data);
         res.status(500).json({
             success: false,
             error: error.message,
-            details: error.response?.data
+            details: error.response?.data,
+            status: error.response?.status,
+            dados_enviados: {
+                name: `Teste API ${Date.now()}`,
+                price: "29.90"
+            }
         });
     }
 });
