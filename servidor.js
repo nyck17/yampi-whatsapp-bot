@@ -170,18 +170,26 @@ function extrairDados(message) {
 
 // Criar produto na Yampi - VERSÃO CORRIGIDA COM HEADERS CORRETOS
 async function criarProdutoYampi(dados) {
-    // Preparar dados do produto no formato correto da Yampi
+    // Preparar dados do produto no formato COMPLETO da Yampi
     const produtoData = {
         name: dados.nome,
         description: dados.descricao || `${dados.nome} - Cadastrado via WhatsApp`,
-        price: dados.preco.toString(), // Yampi espera string
-        cost: "0",
+        price: dados.preco.toFixed(2),
+        sale_price: dados.preco.toFixed(2),
+        cost_price: "0.00",
         sku: gerarSKU(dados.nome),
-        status: "active",
-        weight: "0",
-        height: "0",
-        width: "0",
-        length: "0"
+        barcode: "",
+        quantity: Object.values(dados.estoque).reduce((a, b) => a + b, 0),
+        availability: 1, // 1 = disponível
+        manage_stock: true,
+        status: 1, // 1 = ativo
+        weight: 0.1,
+        height: 10,
+        width: 10,
+        depth: 10,
+        seo_title: dados.nome,
+        seo_description: dados.descricao || dados.nome,
+        seo_keywords: dados.categoria || "produto"
     };
     
     console.log('📦 Criando produto:', produtoData.name);
@@ -206,10 +214,18 @@ async function criarProdutoYampi(dados) {
         
     } catch (error) {
         console.error('❌ Erro ao criar produto:', error.response?.data || error.message);
+        
+        // Log detalhado para debug
+        if (error.response?.status === 422) {
+            console.error('Erro de validação. Campos obrigatórios podem estar faltando.');
+            console.error('Dados enviados:', JSON.stringify(produtoData, null, 2));
+            console.error('Resposta da API:', JSON.stringify(error.response.data, null, 2));
+        }
+        
         throw new Error(
             error.response?.data?.message || 
             error.response?.data?.error || 
-            'Erro ao criar produto na Yampi'
+            'Erro ao criar produto na Yampi. Verifique os dados enviados.'
         );
     }
 }
