@@ -732,3 +732,5 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
     console.error('Promise rejeitada:', reason);
 });
+
+// Deploy trigger
