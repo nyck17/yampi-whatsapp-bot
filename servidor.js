@@ -223,7 +223,49 @@ function gerarSKU(nome) {
     return `${nomeClean}${timestamp}`;
 }
 
-// Simular resposta
+// Teste direto da API Yampi
+app.get('/test-yampi', async (req, res) => {
+    try {
+        log('Testando conexão com API Yampi...');
+        
+        // Teste 1: Verificar se consegue acessar a API básica
+        const testResponse = await axios.get(
+            `${config.YAMPI_API}/catalog/products?limit=1`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${config.YAMPI_TOKEN}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        res.json({
+            success: true,
+            message: 'API Yampi funcionando!',
+            data: testResponse.data,
+            status: testResponse.status
+        });
+        
+    } catch (error) {
+        log(`Erro teste Yampi: ${error.message}`);
+        log(`Status: ${error.response?.status}`);
+        log(`Headers: ${JSON.stringify(error.response?.headers)}`);
+        log(`Data: ${JSON.stringify(error.response?.data)}`);
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            status: error.response?.status,
+            data: error.response?.data,
+            config: {
+                url: `${config.YAMPI_API}/catalog/products`,
+                token_length: config.YAMPI_TOKEN ? config.YAMPI_TOKEN.length : 0,
+                store: process.env.YAMPI_STORE
+            }
+        });
+    }
+});
 async function simularResposta(phone, message) {
     const resposta = {
         timestamp: new Date().toLocaleString('pt-BR'),
