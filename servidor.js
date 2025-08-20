@@ -734,3 +734,14 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Deploy trigger
+
+app.get('/test-token', (req, res) => {
+    res.json({
+        token_exists: !!config.YAMPI_TOKEN,
+        token_length: config.YAMPI_TOKEN?.length,
+        token_prefix: config.YAMPI_TOKEN?.substring(0, 5),
+        store: config.YAMPI_STORE || 'griffestreet',
+        api_url: config.YAMPI_API
+    });
+});
+
