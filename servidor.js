@@ -7,10 +7,11 @@ const path = require('path');
 const app = express();
 app.use(express.json());
 
-// Configurações CORRIGIDAS
+// Configurações CORRIGIDAS com Secret Key
 const config = {
     YAMPI_API: `https://api.dooki.com.br/v2/${process.env.YAMPI_STORE || 'griffestreet'}`,
     YAMPI_TOKEN: process.env.YAMPI_TOKEN || 'cIBCz75dH3HVD8WvPpy8vy9XXjj7ZNovUafTXJXI',
+    YAMPI_SECRET_KEY: process.env.YAMPI_SECRET_KEY || 'sk_op7jZebRjEuA806dcfSuSK8NGrKL1s8qklnf8',
     PORT: process.env.PORT || 3000
 };
 
@@ -167,7 +168,7 @@ function extrairDados(message) {
     return dados;
 }
 
-// Criar produto na Yampi - VERSÃO CORRIGIDA
+// Criar produto na Yampi - VERSÃO CORRIGIDA COM HEADERS CORRETOS
 async function criarProdutoYampi(dados) {
     // Preparar dados do produto no formato correto da Yampi
     const produtoData = {
@@ -192,10 +193,10 @@ async function criarProdutoYampi(dados) {
             produtoData,
             {
                 headers: {
-                    'Authorization': `Bearer ${config.YAMPI_TOKEN}`,
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'User-Agent': 'yampi-whatsapp-bot/1.0'
+                    'Accept': 'application/json'
                 }
             }
         );
@@ -233,10 +234,10 @@ app.get('/test-yampi', async (req, res) => {
             `${config.YAMPI_API}/catalog/products`,
             {
                 headers: {
-                    'Authorization': `Bearer ${config.YAMPI_TOKEN}`,
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY || 'sk_op7jZebRjEuA806dcfSuSK8NGrKL1s8qklnf8',
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'User-Agent': 'yampi-whatsapp-bot/1.0'
+                    'Accept': 'application/json'
                 },
                 params: {
                     limit: 1
@@ -309,7 +310,8 @@ app.get('/test-create', async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            error: error.message
+            error: error.message,
+            details: error.response?.data
         });
     }
 });
@@ -732,16 +734,3 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
     console.error('Promise rejeitada:', reason);
 });
-
-// Deploy trigger
-
-app.get('/test-token', (req, res) => {
-    res.json({
-        token_exists: !!config.YAMPI_TOKEN,
-        token_length: config.YAMPI_TOKEN?.length,
-        token_prefix: config.YAMPI_TOKEN?.substring(0, 5),
-        store: config.YAMPI_STORE || 'griffestreet',
-        api_url: config.YAMPI_API
-    });
-});
-
