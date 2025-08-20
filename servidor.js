@@ -1,8 +1,10 @@
-// servidor.js - Automação GRATUITA Yampi + WhatsApp
+// servidor.js - Automação COMPLETA Yampi + WhatsApp (Baileys integrado)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
 
 const app = express();
 app.use(express.json());
@@ -11,9 +13,14 @@ app.use(express.json());
 const config = {
     YAMPI_API: `https://api.dooki.com.br/v2/${process.env.YAMPI_STORE}`,
     YAMPI_TOKEN: process.env.YAMPI_TOKEN,
-    EVOLUTION_API: process.env.EVOLUTION_API_URL,
     PORT: process.env.PORT || 3000
 };
+
+// Variáveis globais
+let sock;
+let qrCode = '';
+let isConnected = false;
+let produtosPendentes = {};
 
 // Armazenar logs em arquivo (gratuito)
 const logFile = path.join(__dirname, 'produtos.log');
@@ -26,56 +33,143 @@ function log(message) {
     fs.appendFileSync(logFile, logMessage);
 }
 
-// Armazenar dados temporários de produtos (em memória)
-let produtosPendentes = {};
-
-// Webhook do WhatsApp (Evolution API)
-app.post('/webhook', async (req, res) => {
+// Inicializar WhatsApp
+async function initWhatsApp() {
     try {
-        const { data } = req.body;
-        const phone = data.key.remoteJid;
-        const messageId = data.key.id;
+        const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
         
-        // Processar mensagem de texto
-        if (data && data.message && data.message.conversation) {
-            const message = data.message.conversation;
-            log(`Mensagem recebida de ${phone}: ${message.substring(0, 50)}...`);
+        sock = makeWASocket({
+            auth: state,
+            printQRInTerminal: true
+        });
+
+        sock.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect, qr } = update;
             
-            // Processar comandos de cadastro
-            if (message.toLowerCase().includes('/cadastrar') || 
-                message.toLowerCase().includes('cadastrar')) {
-                await processarProduto(message, phone, messageId);
+            if (qr) {
+                qrCode = qr;
+                log('QR Code gerado - acesse /qr para ver');
             }
-        }
+            
+            if (connection === 'close') {
+                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+                log(`Conexão fechada devido a ${lastDisconnect?.error}, reconectando: ${shouldReconnect}`);
+                
+                if (shouldReconnect) {
+                    initWhatsApp();
+                }
+                isConnected = false;
+            } else if (connection === 'open') {
+                log('WhatsApp conectado com sucesso!');
+                isConnected = true;
+                qrCode = '';
+            }
+        });
+
+        sock.ev.on('creds.update', saveCreds);
+        
+        sock.ev.on('messages.upsert', async (m) => {
+            const message = m.messages[0];
+            if (!message.key.fromMe && message.message) {
+                await processarMensagem(message);
+            }
+        });
+
+    } catch (error) {
+        log(`Erro ao inicializar WhatsApp: ${error.message}`);
+        setTimeout(initWhatsApp, 5000); // Tentar novamente em 5s
+    }
+}
+
+// Processar mensagem recebida
+async function processarMensagem(message) {
+    try {
+        const phone = message.key.remoteJid;
+        const messageText = message.message?.conversation || 
+                           message.message?.extendedTextMessage?.text || '';
+        
+        log(`Mensagem de ${phone}: ${messageText.substring(0, 50)}...`);
         
         // Processar imagem
-        else if (data && data.message && data.message.imageMessage) {
-            log(`Imagem recebida de ${phone}`);
-            await processarImagem(data.message.imageMessage, phone, messageId);
+        if (message.message?.imageMessage) {
+            await processarImagem(message.message.imageMessage, phone);
+            return;
         }
         
-        res.status(200).json({ success: true });
+        // Processar comando de cadastro
+        if (messageText.toLowerCase().includes('/cadastrar') || 
+            messageText.toLowerCase().includes('cadastrar')) {
+            await processarProduto(messageText, phone);
+        }
+        
+        // Comandos de ajuda
+        if (messageText.toLowerCase().includes('/ajuda') || 
+            messageText.toLowerCase().includes('ajuda')) {
+            await enviarMensagem(phone, `🤖 *AUTOMAÇÃO YAMPI*
+
+📝 *Como usar:*
+
+1️⃣ Envie uma foto do produto (opcional)
+2️⃣ Envie os dados:
+
+/cadastrar
+Nome: Nome do produto
+Preço: R$ 99,90
+Tamanhos: P,M,G
+Estoque: P=5,M=10,G=8
+Categoria: Categoria
+
+✅ *Campos obrigatórios:* Nome e Preço
+🎯 *Em 30 segundos* seu produto estará na loja!
+
+Digite /exemplo para ver um exemplo completo.`);
+        }
+        
+        if (messageText.toLowerCase().includes('/exemplo')) {
+            await enviarMensagem(phone, `📋 *EXEMPLO COMPLETO:*
+
+📷 [Envie foto do produto]
+
+Depois envie:
+
+/cadastrar
+Nome: Camiseta Polo Azul
+Preço: R$ 89,90
+Tamanhos: P,M,G,GG
+Estoque: P=5,M=10,G=8,GG=3
+Categoria: Camisetas
+Descrição: Camiseta polo 100% algodão
+
+✅ *Resultado:* Produto com foto na sua loja Yampi!`);
+        }
+        
     } catch (error) {
-        log(`Erro no webhook: ${error.message}`);
-        res.status(500).json({ error: error.message });
+        log(`Erro ao processar mensagem: ${error.message}`);
     }
-});
+}
 
 // Processar imagem recebida
-async function processarImagem(imageMessage, phone, messageId) {
+async function processarImagem(imageMessage, phone) {
     try {
-        // Salvar imagem temporariamente para este usuário
+        // Salvar referência da imagem para este usuário
         if (!produtosPendentes[phone]) {
             produtosPendentes[phone] = {};
         }
         
-        // Baixar a imagem
-        const imagemUrl = await baixarImagem(imageMessage, phone);
+        // Download da imagem usando Baileys
+        const buffer = await downloadMediaMessage(imageMessage, 'buffer');
+        
+        // Converter para base64 para upload
+        const base64Image = buffer.toString('base64');
+        
+        // Upload gratuito para ImgBB (ou usar serviço similar)
+        const imagemUrl = await uploadImagem(base64Image);
+        
         produtosPendentes[phone].imagem = imagemUrl;
         
         await enviarMensagem(phone, `📷 *Imagem recebida!*
 
-Agora envie os dados do produto no formato:
+Agora envie os dados do produto:
 
 /cadastrar
 Nome: Nome do produto
@@ -94,43 +188,38 @@ _A imagem será adicionada automaticamente!_`);
     }
 }
 
-// Baixar imagem da Evolution API
-async function baixarImagem(imageMessage, phone) {
+// Upload de imagem (usando serviço gratuito)
+async function uploadImagem(base64Image) {
     try {
-        // Obter a imagem da Evolution API
-        const response = await axios.get(
-            `${config.EVOLUTION_API}/chat/getBase64FromMediaMessage`,
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': process.env.EVOLUTION_APIKEY || 'sua_api_key'
-                },
-                params: {
-                    message: imageMessage
-                }
-            }
-        );
-        
-        const base64Image = response.data.base64;
-        
-        // Upload da imagem para um serviço gratuito (ImgBB)
-        const imgbbResponse = await axios.post(
+        // Usando ImgBB gratuito
+        const response = await axios.post(
             'https://api.imgbb.com/1/upload',
             {
-                key: process.env.IMGBB_API_KEY || 'sua_chave_imgbb', // Chave gratuita
+                key: process.env.IMGBB_API_KEY || 'sua_chave_gratuita',
                 image: base64Image
             }
         );
         
-        return imgbbResponse.data.data.url;
+        return response.data.data.url;
         
     } catch (error) {
-        log(`Erro ao baixar imagem: ${error.message}`);
-        // Retornar URL vazia se houver erro
-        return '';
+        log(`Erro ao fazer upload: ${error.message}`);
+        return ''; // Retornar vazio se houver erro
     }
 }
-async function processarProduto(message, phone, messageId) {
+
+// Download de mídia usando Baileys
+async function downloadMediaMessage(message, type) {
+    const stream = await downloadContentFromMessage(message, type);
+    let buffer = Buffer.alloc(0);
+    for await (const chunk of stream) {
+        buffer = Buffer.concat([buffer, chunk]);
+    }
+    return buffer;
+}
+
+// Função principal para processar produto
+async function processarProduto(message, phone) {
     try {
         log(`Iniciando processamento do produto para ${phone}`);
         
@@ -141,21 +230,47 @@ async function processarProduto(message, phone, messageId) {
         const dados = extrairDados(message);
         
         if (!dados.nome || !dados.preco) {
-            await enviarMensagem(phone, '❌ Erro: Nome e Preço são obrigatórios!\n\nFormato correto:\nNome: Produto\nPreço: R$ 99,90\nTamanhos: P,M,G\nEstoque: P=5,M=10,G=8\nCategoria: Roupas');
+            await enviarMensagem(phone, `❌ *Erro: Nome e Preço são obrigatórios!*
+
+📋 *Formato correto:*
+Nome: Produto
+Preço: R$ 99,90
+Tamanhos: P,M,G
+Estoque: P=5,M=10,G=8
+Categoria: Roupas
+
+📷 *Dica:* Envie a foto ANTES dos dados!
+💡 Digite /exemplo para ver exemplo completo.`);
             return;
         }
         
-        // 2. Criar produto na Yampi
-        const produto = await criarProdutoYampi(dados);
+        // 2. Verificar se há imagem pendente para este usuário
+        let imagemUrl = '';
+        if (produtosPendentes[phone] && produtosPendentes[phone].imagem) {
+            imagemUrl = produtosPendentes[phone].imagem;
+            // Limpar dados pendentes
+            delete produtosPendentes[phone];
+            log(`Usando imagem pendente: ${imagemUrl}`);
+        }
         
-        // 3. Confirmar sucesso
-        await enviarConfirmacao(phone, produto, dados);
+        // 3. Criar produto na Yampi
+        const produto = await criarProdutoYampi(dados, imagemUrl);
+        
+        // 4. Confirmar sucesso
+        await enviarConfirmacao(phone, produto, dados, imagemUrl);
         
         log(`Produto criado com sucesso: ${dados.nome} (ID: ${produto.id})`);
         
     } catch (error) {
         log(`Erro ao processar produto: ${error.message}`);
-        await enviarMensagem(phone, `❌ Erro: ${error.message}\n\nTente novamente ou verifique os dados.`);
+        await enviarMensagem(phone, `❌ *Erro:* ${error.message}
+
+🔧 *Possíveis soluções:*
+• Verifique se Nome e Preço estão corretos
+• Use formato: Nome: valor (com dois pontos)
+• Preço: R$ 99,90 (com R$)
+
+💡 Digite /exemplo para ver formato correto.`);
     }
 }
 
@@ -280,30 +395,19 @@ function gerarSKU(nome) {
     return `${nomeClean}${timestamp}`;
 }
 
-// Enviar mensagem via Evolution API
+// Enviar mensagem via Baileys
 async function enviarMensagem(phone, message) {
     try {
-        const response = await axios.post(
-            `${config.EVOLUTION_API}/message/sendText`,
-            {
-                number: phone,
-                textMessage: {
-                    text: message
-                }
-            },
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': 'sua_api_key' // Configure no Evolution
-                }
-            }
-        );
+        if (!isConnected) {
+            log('WhatsApp não conectado - mensagem não enviada');
+            return;
+        }
         
+        await sock.sendMessage(phone, { text: message });
         log(`Mensagem enviada para ${phone}: ${message.substring(0, 30)}...`);
-        return response.data;
+        
     } catch (error) {
         log(`Erro ao enviar mensagem: ${error.message}`);
-        throw error;
     }
 }
 
@@ -314,7 +418,7 @@ async function enviarConfirmacao(phone, produto, dados, imagemUrl = '') {
     const confirmacao = `✅ *Produto cadastrado com sucesso!*
 
 📦 *${dados.nome}*
-💰 *R$ ${dados.preco.toFixed(2).replace('.', ',').replace(',', ',').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.')}*
+💰 *R$ ${dados.preco.toFixed(2).replace('.', ',').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.')}*
 ${imagemUrl ? '📷 *Com imagem anexada!*' : ''}
 
 📊 *Detalhes:*
@@ -327,19 +431,69 @@ ${imagemUrl ? '📷 *Com imagem anexada!*' : ''}
 *Tamanhos e estoque:*
 ${dados.tamanhos.map(t => `• ${t}: ${dados.estoque[t] || 0} unidades`).join('\n')}
 
-✨ *Seu produto já está disponível na loja!*`;
+✨ *Seu produto já está disponível na loja!*
+
+💡 Digite /ajuda para ver outros comandos.`;
 
     await enviarMensagem(phone, confirmacao);
 }
+
+// Rota para QR Code
+app.get('/qr', (req, res) => {
+    if (qrCode) {
+        const QRCode = require('qrcode');
+        QRCode.toDataURL(qrCode, (err, url) => {
+            if (err) {
+                res.status(500).send('Erro ao gerar QR Code');
+            } else {
+                res.send(`
+                    <html>
+                        <head><title>WhatsApp QR Code</title></head>
+                        <body style="text-align: center; font-family: Arial;">
+                            <h1>🚀 Automação Yampi + WhatsApp</h1>
+                            <h2>📱 Escaneie com seu WhatsApp:</h2>
+                            <img src="${url}" style="border: 2px solid #25D366; border-radius: 10px;">
+                            <p><strong>Como escanear:</strong></p>
+                            <ol style="text-align: left; max-width: 400px; margin: 0 auto;">
+                                <li>Abra WhatsApp no seu celular</li>
+                                <li>Vá em Configurações > Aparelhos conectados</li>
+                                <li>Clique "Conectar um aparelho"</li>
+                                <li>Escaneie este QR Code</li>
+                            </ol>
+                            <p><em>Atualize a página se o QR Code não carregar</em></p>
+                        </body>
+                    </html>
+                `);
+            }
+        });
+    } else {
+        res.send(`
+            <html>
+                <head>
+                    <title>WhatsApp Status</title>
+                    <meta http-equiv="refresh" content="3">
+                </head>
+                <body style="text-align: center; font-family: Arial;">
+                    <h1>🤖 Automação Yampi + WhatsApp</h1>
+                    ${isConnected ? 
+                        '<h2 style="color: green;">✅ WhatsApp Conectado!</h2><p>Sua automação está funcionando!</p>' :
+                        '<h2 style="color: orange;">⏳ Gerando QR Code...</h2><p>Aguarde alguns segundos...</p>'
+                    }
+                </body>
+            </html>
+        `);
+    }
+});
 
 // Rota de status (para monitoramento)
 app.get('/status', (req, res) => {
     res.json({
         status: 'online',
+        whatsapp_connected: isConnected,
         timestamp: new Date().toISOString(),
         config: {
             yampi_configured: !!config.YAMPI_TOKEN,
-            evolution_configured: !!config.EVOLUTION_API
+            yampi_store: !!process.env.YAMPI_STORE
         }
     });
 });
@@ -358,33 +512,73 @@ app.get('/logs', (req, res) => {
     }
 });
 
+// Página inicial
+app.get('/', (req, res) => {
+    res.send(`
+        <html>
+            <head><title>🤖 Automação Yampi + WhatsApp</title></head>
+            <body style="font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px;">
+                <h1 style="color: #25D366;">🤖 Automação Yampi + WhatsApp</h1>
+                <p><strong>Status:</strong> ${isConnected ? '✅ Conectado' : '❌ Desconectado'}</p>
+                
+                <h3>📱 Links Úteis:</h3>
+                <ul>
+                    <li><a href="/qr">📲 Conectar WhatsApp (QR Code)</a></li>
+                    <li><a href="/status">📊 Status da API</a></li>
+                    <li><a href="/logs">📝 Logs de Atividade</a></li>
+                </ul>
+                
+                <h3>💡 Como Usar:</h3>
+                <ol>
+                    <li>Conecte seu WhatsApp usando o QR Code</li>
+                    <li>Envie foto do produto (opcional)</li>
+                    <li>Envie dados no formato:</li>
+                </ol>
+                
+                <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px;">
+/cadastrar
+Nome: Camiseta Polo
+Preço: R$ 89,90
+Tamanhos: P,M,G
+Estoque: P=5,M=10,G=8
+Categoria: Roupas
+                </pre>
+                
+                <p><em>Em 30 segundos seu produto estará na loja Yampi!</em></p>
+                
+                <hr>
+                <p style="color: #666; font-size: 12px;">
+                    Desenvolvido com ❤️ - 100% Gratuito
+                </p>
+            </body>
+        </html>
+    `);
+});
+
+// Inicializar WhatsApp ao iniciar servidor
+initWhatsApp();
+
 // Iniciar servidor
 app.listen(config.PORT, () => {
     log(`🚀 Servidor rodando na porta ${config.PORT}`);
-    log(`🔗 Status: http://localhost:${config.PORT}/status`);
-    log(`📝 Logs: http://localhost:${config.PORT}/logs`);
+    log(`🔗 Acesse: http://localhost:${config.PORT}`);
+    log(`📱 QR Code: http://localhost:${config.PORT}/qr`);
+    log(`📊 Status: http://localhost:${config.PORT}/status`);
     
     console.log(`
 ╔══════════════════════════════════════════════════╗
 ║        🤖 AUTOMAÇÃO YAMPI + WHATSAPP 🤖           ║
-║                 100% GRATUITA                    ║
+║              TUDO INTEGRADO + GRATUITO           ║
 ╠══════════════════════════════════════════════════╣
 ║  ✅ Servidor: ONLINE                             ║
 ║  ✅ Porta: ${config.PORT}                                  ║
 ║  ✅ Yampi: ${config.YAMPI_TOKEN ? 'CONFIGURADO' : 'PENDENTE'}                   ║
-║  ✅ Evolution: ${config.EVOLUTION_API ? 'CONFIGURADO' : 'PENDENTE'}              ║
+║  ✅ WhatsApp: INICIALIZANDO...                   ║
 ╠══════════════════════════════════════════════════╣
 ║              COMO USAR:                          ║
-║  1. Envie no WhatsApp:                           ║
-║     /cadastrar                                   ║
-║     Nome: Camiseta Polo                          ║
-║     Preço: R$ 89,90                              ║
-║     Tamanhos: P,M,G                              ║
-║     Estoque: P=5,M=10,G=8                        ║
-║     Categoria: Roupas                            ║
-║                                                  ║
-║  2. Aguarde a confirmação                        ║
-║  3. Produto estará na sua loja!                  ║
+║  1. Acesse /qr para conectar WhatsApp            ║
+║  2. Envie foto + dados no WhatsApp               ║
+║  3. Produto criado automaticamente!              ║
 ╚══════════════════════════════════════════════════╝
     `);
 });
