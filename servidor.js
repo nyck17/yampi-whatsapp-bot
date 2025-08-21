@@ -168,15 +168,20 @@ function extrairDados(message) {
     return dados;
 }
 
-// Criar produto na Yampi - VERSÃO ULTRA SIMPLIFICADA
+// Criar produto na Yampi - VERSÃO CORRETA COM SKU
 async function criarProdutoYampi(dados) {
-    // Preparar dados MÍNIMOS do produto
+    // Preparar dados do produto com SKU obrigatório
     const produtoData = {
+        sku: gerarSKU(dados.nome), // SKU é OBRIGATÓRIO!
         name: dados.nome,
-        price: dados.preco.toFixed(2)
+        price_sale: parseFloat(dados.preco).toFixed(2), // Preço de venda
+        price_discount: parseFloat(dados.preco).toFixed(2), // Preço com desconto (mesmo valor)
+        active: true,
+        blocked_sale: false,
+        description: dados.descricao || `${dados.nome} - Cadastrado via WhatsApp`
     };
     
-    console.log('📦 Criando produto (versão simples):', produtoData);
+    console.log('📦 Criando produto com SKU:', produtoData);
     console.log('URL:', `${config.YAMPI_API}/catalog/products`);
     
     try {
@@ -193,23 +198,22 @@ async function criarProdutoYampi(dados) {
             }
         );
         
-        console.log('✅ Produto criado com sucesso! ID:', response.data.data?.id || response.data.id);
+        console.log('✅ PRODUTO CRIADO COM SUCESSO!');
+        console.log('ID do produto:', response.data.data?.id || response.data.id);
+        console.log('SKU:', response.data.data?.sku || response.data.sku);
         return response.data.data || response.data;
         
     } catch (error) {
-        console.error('❌ Erro ao criar produto:', error.response?.data || error.message);
+        console.error('❌ Erro ao criar produto!');
         
-        // Log super detalhado para debug
         if (error.response) {
             console.error('Status:', error.response.status);
-            console.error('Headers:', error.response.headers);
-            console.error('Data completa:', JSON.stringify(error.response.data, null, 2));
-            console.error('Config da request:', {
-                url: error.config?.url,
-                method: error.config?.method,
-                headers: error.config?.headers,
-                data: error.config?.data
-            });
+            console.error('Erro:', JSON.stringify(error.response.data, null, 2));
+            
+            // Mostrar campos com erro
+            if (error.response.status === 422 && error.response.data?.data) {
+                console.error('Campos com problema:', error.response.data.data);
+            }
         }
         
         throw new Error(
