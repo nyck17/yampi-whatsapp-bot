@@ -1,4 +1,4 @@
-// servidor.js - Automação Yampi + WhatsApp SIMPLIFICADA E FUNCIONAL
+// servidor.js - AUTOMAÇÃO YAMPI + WHATSAPP - VERSÃO COMPLETA CORRIGIDA
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs').promises;
@@ -37,6 +37,251 @@ function log(message) {
         simulatedMessages = simulatedMessages.slice(-100);
     }
 }
+
+// ========== NOVOS ENDPOINTS PARA RESOLVER BRAND_ID ==========
+
+// 1. ENDPOINT PARA LISTAR MARCAS DISPONÍVEIS
+app.get('/list-brands', async (req, res) => {
+    try {
+        console.log('🔍 Listando marcas disponíveis...');
+        
+        const response = await axios.get(
+            `${config.YAMPI_API}/catalog/brands`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                params: {
+                    limit: 50 // Pegar até 50 marcas
+                }
+            }
+        );
+        
+        const brands = response.data.data || [];
+        
+        res.json({
+            success: true,
+            total_brands: brands.length,
+            brands: brands.map(brand => ({
+                id: brand.id,
+                name: brand.name,
+                active: brand.active
+            })),
+            recommendation: brands.length > 0 
+                ? `✅ Use brand_id: ${brands[0].id} (${brands[0].name})`
+                : '⚠️ Nenhuma marca encontrada. Crie uma marca primeiro no painel Yampi.'
+        });
+        
+    } catch (error) {
+        console.error('❌ Erro ao listar marcas:', error.response?.data);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
+
+// 2. ENDPOINT PARA CRIAR MARCA AUTOMATICAMENTE
+app.post('/create-brand', async (req, res) => {
+    try {
+        console.log('🏷️ Criando marca automática...');
+        
+        const brandData = {
+            name: req.body.name || 'Marca Padrão WhatsApp',
+            active: true
+        };
+        
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/brands`,
+            brandData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const brand = response.data.data || response.data;
+        
+        res.json({
+            success: true,
+            message: '✅ Marca criada com sucesso!',
+            brand: {
+                id: brand.id,
+                name: brand.name
+            },
+            next_step: `Agora use brand_id: ${brand.id} para criar produtos`
+        });
+        
+    } catch (error) {
+        console.error('❌ Erro ao criar marca:', error.response?.data);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
+
+// 3. FUNÇÃO MELHORADA PARA OBTER BRAND_ID VÁLIDO
+async function obterBrandIdValido() {
+    try {
+        // Primeiro, tentar listar marcas existentes
+        const response = await axios.get(
+            `${config.YAMPI_API}/catalog/brands`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                params: { limit: 1 }
+            }
+        );
+        
+        const brands = response.data.data || [];
+        
+        if (brands.length > 0) {
+            console.log(`✅ Marca encontrada: ${brands[0].name} (ID: ${brands[0].id})`);
+            return brands[0].id;
+        }
+        
+        // Se não há marcas, criar uma automaticamente
+        console.log('⚠️ Nenhuma marca encontrada. Criando marca automática...');
+        
+        const createResponse = await axios.post(
+            `${config.YAMPI_API}/catalog/brands`,
+            {
+                name: 'Marca WhatsApp Bot',
+                active: true
+            },
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const newBrand = createResponse.data.data || createResponse.data;
+        console.log(`✅ Marca criada: ${newBrand.name} (ID: ${newBrand.id})`);
+        return newBrand.id;
+        
+    } catch (error) {
+        console.error('❌ Erro ao obter brand_id:', error.response?.data);
+        throw new Error(`Erro ao configurar marca: ${error.message}`);
+    }
+}
+
+// 4. FUNÇÃO DE CRIAR PRODUTO CORRIGIDA
+async function criarProdutoYampi(dados) {
+    try {
+        // Obter brand_id válido dinamicamente
+        const brandId = await obterBrandIdValido();
+        
+        // Preparar dados do produto
+        const produtoData = {
+            sku: gerarSKU(dados.nome),
+            name: dados.nome,
+            brand_id: brandId, // Usar marca válida
+            price_sale: parseFloat(dados.preco).toFixed(2),
+            price_discount: parseFloat(dados.preco).toFixed(2),
+            active: true,
+            blocked_sale: false,
+            description: dados.descricao || `${dados.nome} - Cadastrado via WhatsApp`
+        };
+        
+        console.log('📦 Criando produto com dados corrigidos:', {
+            sku: produtoData.sku,
+            name: produtoData.name,
+            brand_id: produtoData.brand_id,
+            price: produtoData.price_sale
+        });
+        
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ PRODUTO CRIADO COM SUCESSO!');
+        const produto = response.data.data || response.data;
+        console.log('ID do produto:', produto.id);
+        console.log('SKU:', produto.sku);
+        console.log('Brand ID usado:', brandId);
+        
+        return produto;
+        
+    } catch (error) {
+        console.error('❌ Erro ao criar produto corrigido!');
+        
+        if (error.response) {
+            console.error('Status:', error.response.status);
+            console.error('Erro detalhado:', JSON.stringify(error.response.data, null, 2));
+        }
+        
+        throw new Error(
+            error.response?.data?.message || 
+            JSON.stringify(error.response?.data?.errors) ||
+            'Erro ao criar produto na Yampi'
+        );
+    }
+}
+
+// 5. ENDPOINT DE TESTE COMPLETO
+app.get('/test-create-fixed', async (req, res) => {
+    try {
+        console.log('🧪 Teste completo de criação de produto...');
+        
+        // Testar dados mínimos
+        const dadosTeste = {
+            nome: `Produto Teste ${Date.now()}`,
+            preco: 29.90,
+            descricao: 'Produto criado automaticamente via WhatsApp Bot'
+        };
+        
+        const produto = await criarProdutoYampi(dadosTeste);
+        
+        res.json({
+            success: true,
+            message: '🎉 PRODUTO CRIADO COM SUCESSO!',
+            produto: {
+                id: produto.id,
+                name: produto.name,
+                sku: produto.sku,
+                price: produto.price_sale,
+                brand_id: produto.brand_id
+            },
+            next_step: 'Agora teste no WhatsApp simulator!'
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            help: 'Tente primeiro /list-brands para ver marcas disponíveis'
+        });
+    }
+});
+
+// ========== RESTO DO CÓDIGO ORIGINAL ==========
 
 // Webhook para receber mensagens
 app.post('/webhook', async (req, res) => {
@@ -168,63 +413,6 @@ function extrairDados(message) {
     return dados;
 }
 
-// Criar produto na Yampi - VERSÃO CORRETA COM SKU
-async function criarProdutoYampi(dados) {
-    // Preparar dados do produto com SKU obrigatório
-    const produtoData = {
-        sku: gerarSKU(dados.nome), // SKU é OBRIGATÓRIO!
-        name: dados.nome,
-        price_sale: parseFloat(dados.preco).toFixed(2), // Preço de venda
-        price_discount: parseFloat(dados.preco).toFixed(2), // Preço com desconto (mesmo valor)
-        active: true,
-        blocked_sale: false,
-        description: dados.descricao || `${dados.nome} - Cadastrado via WhatsApp`
-    };
-    
-    console.log('📦 Criando produto com SKU:', produtoData);
-    console.log('URL:', `${config.YAMPI_API}/catalog/products`);
-    
-    try {
-        const response = await axios.post(
-            `${config.YAMPI_API}/catalog/products`,
-            produtoData,
-            {
-                headers: {
-                    'User-Token': config.YAMPI_TOKEN,
-                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                }
-            }
-        );
-        
-        console.log('✅ PRODUTO CRIADO COM SUCESSO!');
-        console.log('ID do produto:', response.data.data?.id || response.data.id);
-        console.log('SKU:', response.data.data?.sku || response.data.sku);
-        return response.data.data || response.data;
-        
-    } catch (error) {
-        console.error('❌ Erro ao criar produto!');
-        
-        if (error.response) {
-            console.error('Status:', error.response.status);
-            console.error('Erro:', JSON.stringify(error.response.data, null, 2));
-            
-            // Mostrar campos com erro
-            if (error.response.status === 422 && error.response.data?.data) {
-                console.error('Campos com problema:', error.response.data.data);
-            }
-        }
-        
-        throw new Error(
-            error.response?.data?.message || 
-            error.response?.data?.error || 
-            JSON.stringify(error.response?.data) ||
-            'Erro ao criar produto na Yampi'
-        );
-    }
-}
-
 // Gerar SKU único
 function gerarSKU(nome) {
     const timestamp = Date.now().toString().slice(-6);
@@ -292,63 +480,6 @@ app.get('/test-yampi', async (req, res) => {
     }
 });
 
-// NOVO ENDPOINT - Teste MINIMAL de criação
-app.get('/test-minimal', async (req, res) => {
-    try {
-        // Produto ABSOLUTAMENTE MÍNIMO
-        const produtoData = {
-            sku: `TEST${Date.now()}`,
-            name: "Produto Teste Minimal",
-            brand_id: 44725150
-        };
-        
-        console.log('🧪 Testando com dados MÍNIMOS:', JSON.stringify(produtoData));
-        
-        const response = await axios.post(
-            `${config.YAMPI_API}/catalog/products`,
-            produtoData,
-            {
-                headers: {
-                    'User-Token': config.YAMPI_TOKEN,
-                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                }
-            }
-        );
-        
-        res.json({
-            success: true,
-            message: '✅ FUNCIONOU! Produto criado!',
-            produto: response.data
-        });
-        
-    } catch (error) {
-        // Vamos ver EXATAMENTE o que a Yampi está dizendo
-        const errorDetails = {
-            success: false,
-            status: error.response?.status,
-            statusText: error.response?.statusText,
-            error_message: error.response?.data?.message,
-            error_data: error.response?.data?.data,
-            errors_field: error.response?.data?.errors,
-            full_error: error.response?.data,
-            sent_data: {
-                sku: `TEST${Date.now()}`,
-                name: "Produto Teste Minimal",
-                brand_id: 44725150
-            },
-            headers_used: {
-                'User-Token': config.YAMPI_TOKEN ? 'Token presente' : 'TOKEN FALTANDO!',
-                'User-Secret-Key': config.YAMPI_SECRET_KEY ? 'Secret presente' : 'SECRET FALTANDO!'
-            }
-        };
-        
-        console.error('Erro detalhado:', JSON.stringify(errorDetails, null, 2));
-        res.status(500).json(errorDetails);
-    }
-});
-
 // ENDPOINT DE DEBUG COMPLETO - Descobrir o problema exato
 app.get('/debug-product', async (req, res) => {
     const results = [];
@@ -409,56 +540,6 @@ app.get('/debug-product', async (req, res) => {
         });
     }
     
-    // Teste 3: Tentar com diferentes tipos de brand_id
-    const brandVariations = [
-        44725150,           // número
-        "44725150",         // string
-        parseInt("44725150"), // parseInt
-        1,                  // ID 1
-        "1"                 // String "1"
-    ];
-    
-    for (const brandId of brandVariations) {
-        try {
-            console.log(`TESTE 3: Testando brand_id como ${typeof brandId}: ${brandId}`);
-            const testProduct = {
-                sku: `TEST${Date.now()}${Math.random().toString(36).substr(2, 5)}`,
-                name: `Teste Brand ${brandId}`,
-                brand_id: brandId,
-                price: "29.90"
-            };
-            
-            const response = await axios.post(
-                `${config.YAMPI_API}/catalog/products`,
-                testProduct,
-                {
-                    headers: {
-                        'User-Token': config.YAMPI_TOKEN,
-                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                }
-            );
-            
-            results.push({ 
-                test: `Brand ID ${brandId} (${typeof brandId})`, 
-                success: true, 
-                product_id: response.data.data?.id 
-            });
-            
-            // Se funcionou, pare de testar
-            break;
-            
-        } catch (error) {
-            results.push({ 
-                test: `Brand ID ${brandId} (${typeof brandId})`, 
-                success: false,
-                error: error.response?.data?.errors?.brand_id || error.response?.data?.message
-            });
-        }
-    }
-    
     // Retornar todos os resultados
     res.json({
         timestamp: new Date().toISOString(),
@@ -491,7 +572,7 @@ async function simularResposta(phone, message) {
 async function enviarAjuda(phone) {
     const ajuda = `🤖 AUTOMAÇÃO YAMPI
 
-📝 Como usar:
+📋 Como usar:
 
 FORMATO SIMPLES (uma linha):
 /cadastrar Nome: Camiseta Teste Preço: R$ 29,90 Categoria: Roupas
@@ -793,7 +874,7 @@ app.get('/logs', (req, res) => {
     res.json({ logs });
 });
 
-// Página inicial
+// Página inicial ATUALIZADA
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -802,18 +883,31 @@ app.get('/', (req, res) => {
             <title>🤖 Automação Yampi + WhatsApp</title>
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
-                body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
+                body { font-family: Arial; max-width: 900px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
                 .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
                 h1 { color: #25D366; text-align: center; }
                 .status { text-align: center; padding: 20px; margin: 20px 0; border-radius: 10px; background: #d4edda; border: 1px solid #c3e6cb; }
+                .alert { padding: 15px; margin: 20px 0; border-radius: 10px; background: #fff3cd; border: 1px solid #ffeaa7; }
+                .error { background: #f8d7da; border: 1px solid #f5c6cb; }
+                .success { background: #d1ecf1; border: 1px solid #bee5eb; }
                 .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 30px 0; }
-                .link-card { background: #25D366; color: white; padding: 20px; border-radius: 10px; text-decoration: none; text-align: center; }
+                .link-card { background: #25D366; color: white; padding: 20px; border-radius: 10px; text-decoration: none; text-align: center; transition: transform 0.2s; }
                 .link-card:hover { transform: translateY(-2px); color: white; text-decoration: none; }
                 .example { background: #f8f9fa; padding: 20px; border-left: 4px solid #25D366; margin: 20px 0; }
-                pre { background: #e9ecef; padding: 15px; border-radius: 5px; }
-                .test-buttons { display: flex; gap: 10px; margin: 20px 0; }
-                .test-btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
-                .test-btn:hover { background: #0056b3; }
+                pre { background: #e9ecef; padding: 15px; border-radius: 5px; font-size: 14px; }
+                .test-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin: 20px 0; }
+                .test-btn { background: #007bff; color: white; padding: 15px 20px; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; text-align: center; transition: background 0.2s; }
+                .test-btn:hover { background: #0056b3; color: white; text-decoration: none; }
+                .test-btn.danger { background: #dc3545; }
+                .test-btn.danger:hover { background: #c82333; }
+                .test-btn.success { background: #28a745; }
+                .test-btn.success:hover { background: #218838; }
+                .test-btn.warning { background: #ffc107; color: #212529; }
+                .test-btn.warning:hover { background: #e0a800; }
+                .step { background: #e7f3ff; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #007bff; }
+                .step h4 { margin: 0 0 10px 0; color: #007bff; }
+                .result-box { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6; min-height: 100px; }
+                #results { display: none; }
             </style>
         </head>
         <body>
@@ -821,43 +915,137 @@ app.get('/', (req, res) => {
                 <h1>🤖 Automação Yampi + WhatsApp</h1>
                 
                 <div class="status">
-                    <h3>✅ Sistema Online e Funcionando!</h3>
-                    <p>Sua automação está ativa e pronta para uso!</p>
-                    <p>Store: <strong>${process.env.YAMPI_STORE || 'griffestreet'}</strong></p>
+                    <h3>⚠️ Resolvendo Problema de Marca (Brand ID)</h3>
+                    <p>Sistema online, mas precisamos configurar uma marca válida!</p>
+                    <p>Store: <strong>griffestreet</strong></p>
+                </div>
+                
+                <div class="alert">
+                    <h4>🔧 Problema Identificado:</h4>
+                    <p>A Yampi exige um <strong>brand_id</strong> válido para criar produtos. O ID que estava sendo usado (44725150) não existe na sua loja.</p>
+                </div>
+                
+                <div class="step">
+                    <h4>1️⃣ Primeiro: Verificar Marcas</h4>
+                    <p>Vamos ver quais marcas existem na sua loja Yampi:</p>
+                    <button class="test-btn" onclick="testarEndpoint('/list-brands')">🔍 Listar Marcas Disponíveis</button>
+                </div>
+                
+                <div class="step">
+                    <h4>2️⃣ Se Necessário: Criar Marca</h4>
+                    <p>Se não houver marcas, criaremos uma automaticamente:</p>
+                    <button class="test-btn warning" onclick="criarMarca()">🏷️ Criar Marca Automática</button>
+                </div>
+                
+                <div class="step">
+                    <h4>3️⃣ Testar Criação de Produto</h4>
+                    <p>Com a marca configurada, testar a criação:</p>
+                    <button class="test-btn success" onclick="testarEndpoint('/test-create-fixed')">📦 Criar Produto Teste</button>
                 </div>
                 
                 <div class="test-buttons">
-                    <a href="/test-yampi" class="test-btn">🔍 Testar Conexão API</a>
-                    <a href="/test-create" class="test-btn">📦 Criar Produto Teste</a>
+                    <a href="/test-yampi" class="test-btn">🔌 Testar Conexão API</a>
+                    <a href="/debug-product" class="test-btn">🐛 Debug Completo</a>
+                    <a href="/whatsapp" class="test-btn success">📱 WhatsApp Simulator</a>
+                    <a href="/status" class="test-btn">📊 Status Sistema</a>
                 </div>
                 
-                <div class="links">
-                    <a href="/whatsapp" class="link-card">
-                        📱 Testar Agora<br><small>Simulador WhatsApp</small>
-                    </a>
-                    <a href="/status" class="link-card">
-                        📊 Status da API<br><small>Verificar funcionamento</small>
-                    </a>
-                    <a href="/logs" class="link-card">
-                        📝 Ver Logs<br><small>Atividade do sistema</small>
-                    </a>
-                    <a href="https://painel.yampi.com.br" target="_blank" class="link-card">
-                        🏪 Painel Yampi<br><small>Ver produtos criados</small>
-                    </a>
+                <div id="results" class="result-box">
+                    <h4>📋 Resultados dos Testes:</h4>
+                    <pre id="result-content">Clique nos botões acima para executar os testes...</pre>
                 </div>
                 
                 <div class="example">
-                    <h3>🚀 Como usar:</h3>
-                    <p><strong>1. Clique em "Testar Agora"</strong></p>
-                    <p><strong>2. Digite no chat:</strong></p>
+                    <h3>🚀 Depois de resolver, use assim:</h3>
+                    <p><strong>1. Vá para o WhatsApp Simulator</strong></p>
+                    <p><strong>2. Digite:</strong></p>
                     <pre>/cadastrar Nome: Camiseta Teste Preço: R$ 29,90 Categoria: Roupas</pre>
-                    <p><strong>3. Veja o produto na sua loja Yampi!</strong></p>
+                    <p><strong>3. ✅ Produto será criado automaticamente!</strong></p>
+                </div>
+                
+                <div class="links">
+                    <a href="https://painel.yampi.com.br/catalog/brands" target="_blank" class="link-card">
+                        🏷️ Marcas no Painel<br><small>Gerenciar marcas Yampi</small>
+                    </a>
+                    <a href="https://painel.yampi.com.br/catalog/products" target="_blank" class="link-card">
+                        📦 Produtos<br><small>Ver produtos criados</small>
+                    </a>
+                    <a href="/logs" class="link-card">
+                        📋 Logs Sistema<br><small>Acompanhar atividade</small>
+                    </a>
                 </div>
                 
                 <p style="text-align: center; color: #666; margin-top: 30px;">
-                    ✨ 100% Gratuito - Desenvolvido para simplificar sua vida!
+                    ⚡ Quase lá! Só precisamos resolver essa questão da marca.
                 </p>
             </div>
+
+            <script>
+                async function testarEndpoint(endpoint) {
+                    const resultsDiv = document.getElementById('results');
+                    const contentDiv = document.getElementById('result-content');
+                    
+                    resultsDiv.style.display = 'block';
+                    contentDiv.textContent = '⏳ Executando teste...';
+                    
+                    try {
+                        const response = await fetch(endpoint);
+                        const data = await response.json();
+                        
+                        contentDiv.textContent = JSON.stringify(data, null, 2);
+                        
+                        if (data.success) {
+                            resultsDiv.className = 'result-box success';
+                        } else {
+                            resultsDiv.className = 'result-box error';
+                        }
+                        
+                    } catch (error) {
+                        contentDiv.textContent = \`❌ Erro: \${error.message}\`;
+                        resultsDiv.className = 'result-box error';
+                    }
+                }
+                
+                async function criarMarca() {
+                    const nome = prompt('Nome da marca (ou deixe vazio para usar "Marca WhatsApp Bot"):') || 'Marca WhatsApp Bot';
+                    
+                    const resultsDiv = document.getElementById('results');
+                    const contentDiv = document.getElementById('result-content');
+                    
+                    resultsDiv.style.display = 'block';
+                    contentDiv.textContent = '⏳ Criando marca...';
+                    
+                    try {
+                        const response = await fetch('/create-brand', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ name: nome })
+                        });
+                        
+                        const data = await response.json();
+                        contentDiv.textContent = JSON.stringify(data, null, 2);
+                        
+                        if (data.success) {
+                            resultsDiv.className = 'result-box success';
+                            
+                            // Auto-testar criação de produto após 2 segundos
+                            setTimeout(() => {
+                                if (confirm('Marca criada! Testar criação de produto agora?')) {
+                                    testarEndpoint('/test-create-fixed');
+                                }
+                            }, 2000);
+                        } else {
+                            resultsDiv.className = 'result-box error';
+                        }
+                        
+                    } catch (error) {
+                        contentDiv.textContent = \`❌ Erro: \${error.message}\`;
+                        resultsDiv.className = 'result-box error';
+                    }
+                }
+            </script>
         </body>
         </html>
     `);
@@ -867,20 +1055,22 @@ app.get('/', (req, res) => {
 app.listen(config.PORT, () => {
     log(`🚀 Servidor rodando na porta ${config.PORT}`);
     console.log(`
-╔══════════════════════════════════════════════════╗
+╔═══════════════════════════════════════════════════════╗
 ║        🤖 AUTOMAÇÃO YAMPI + WHATSAPP 🤖           ║
 ║                   FUNCIONANDO                    ║
-╠══════════════════════════════════════════════════╣
+╠═══════════════════════════════════════════════════════╣
 ║  ✅ Servidor: ONLINE na porta ${config.PORT}              ║
 ║  ✅ Yampi Store: ${process.env.YAMPI_STORE || 'griffestreet'}                     ║
 ║  ✅ Token: ${config.YAMPI_TOKEN ? 'CONFIGURADO (' + config.YAMPI_TOKEN.length + ' chars)' : 'NÃO CONFIGURADO'}     ║
 ║  ✅ WhatsApp: SIMULADOR ATIVO                    ║
-╠══════════════════════════════════════════════════╣
-║              ENDPOINTS DE TESTE:                 ║
-║  📍 /test-yampi - Testa conexão com API          ║
-║  📍 /test-create - Cria produto de teste         ║
-║  📍 /whatsapp - Simulador WhatsApp               ║
-╚══════════════════════════════════════════════════╝
+║  🔧 Brand Fix: IMPLEMENTADO                      ║
+╠═══════════════════════════════════════════════════════╣
+║              NOVOS ENDPOINTS:                     ║
+║  🏷️ /list-brands - Lista marcas disponíveis      ║
+║  🏷️ /create-brand - Cria marca automática        ║
+║  📦 /test-create-fixed - Teste criação corrigido ║
+║  🔍 /whatsapp - Simulador WhatsApp               ║
+╚═══════════════════════════════════════════════════════╝
     `);
 });
 
