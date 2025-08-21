@@ -292,16 +292,16 @@ app.get('/test-yampi', async (req, res) => {
     }
 });
 
-// NOVO ENDPOINT - Teste rápido de criação
-app.get('/test-create', async (req, res) => {
+// NOVO ENDPOINT - Teste MINIMAL de criação
+app.get('/test-minimal', async (req, res) => {
     try {
-        // Produto SUPER SIMPLES para teste
+        // Produto ABSOLUTAMENTE MÍNIMO
         const produtoData = {
-            name: `Teste API ${Date.now()}`,
-            price: "29.90"
+            sku: `TEST${Date.now()}`,
+            name: "Produto Teste Minimal"
         };
         
-        console.log('🧪 Tentando criar produto SIMPLES:', produtoData);
+        console.log('🧪 Testando com dados MÍNIMOS:', JSON.stringify(produtoData));
         
         const response = await axios.post(
             `${config.YAMPI_API}/catalog/products`,
@@ -318,22 +318,32 @@ app.get('/test-create', async (req, res) => {
         
         res.json({
             success: true,
-            message: '✅ Produto criado com sucesso!',
+            message: '✅ FUNCIONOU! Produto criado!',
             produto: response.data
         });
         
     } catch (error) {
-        console.error('Erro completo:', error.response?.data);
-        res.status(500).json({
+        // Vamos ver EXATAMENTE o que a Yampi está dizendo
+        const errorDetails = {
             success: false,
-            error: error.message,
-            details: error.response?.data,
             status: error.response?.status,
-            dados_enviados: {
-                name: `Teste API ${Date.now()}`,
-                price: "29.90"
+            statusText: error.response?.statusText,
+            error_message: error.response?.data?.message,
+            error_data: error.response?.data?.data,
+            errors_field: error.response?.data?.errors,
+            full_error: error.response?.data,
+            sent_data: {
+                sku: `TEST${Date.now()}`,
+                name: "Produto Teste Minimal"
+            },
+            headers_used: {
+                'User-Token': config.YAMPI_TOKEN ? 'Token presente' : 'TOKEN FALTANDO!',
+                'User-Secret-Key': config.YAMPI_SECRET_KEY ? 'Secret presente' : 'SECRET FALTANDO!'
             }
-        });
+        };
+        
+        console.error('Erro detalhado:', JSON.stringify(errorDetails, null, 2));
+        res.status(500).json(errorDetails);
     }
 });
 
