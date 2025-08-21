@@ -298,7 +298,8 @@ app.get('/test-minimal', async (req, res) => {
         // Produto ABSOLUTAMENTE MÍNIMO
         const produtoData = {
             sku: `TEST${Date.now()}`,
-            name: "Produto Teste Minimal"
+            name: "Produto Teste Minimal",
+            brand_id: 44725150
         };
         
         console.log('🧪 Testando com dados MÍNIMOS:', JSON.stringify(produtoData));
@@ -334,7 +335,8 @@ app.get('/test-minimal', async (req, res) => {
             full_error: error.response?.data,
             sent_data: {
                 sku: `TEST${Date.now()}`,
-                name: "Produto Teste Minimal"
+                name: "Produto Teste Minimal",
+                brand_id: 44725150
             },
             headers_used: {
                 'User-Token': config.YAMPI_TOKEN ? 'Token presente' : 'TOKEN FALTANDO!',
@@ -345,6 +347,131 @@ app.get('/test-minimal', async (req, res) => {
         console.error('Erro detalhado:', JSON.stringify(errorDetails, null, 2));
         res.status(500).json(errorDetails);
     }
+});
+
+// ENDPOINT DE DEBUG COMPLETO - Descobrir o problema exato
+app.get('/debug-product', async (req, res) => {
+    const results = [];
+    
+    // Teste 1: Verificar se a marca existe
+    try {
+        console.log('TESTE 1: Verificando marca ID 44725150...');
+        const brandCheck = await axios.get(
+            `${config.YAMPI_API}/catalog/brands/44725150`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        results.push({ test: 'Marca existe', success: true, data: brandCheck.data });
+    } catch (error) {
+        results.push({ 
+            test: 'Marca existe', 
+            success: false, 
+            error: error.response?.status,
+            message: error.response?.data
+        });
+    }
+    
+    // Teste 2: Tentar criar produto com dados MÍNIMOS absolutos
+    try {
+        console.log('TESTE 2: Produto com dados mínimos...');
+        const minimalProduct = {
+            sku: `MIN${Date.now()}`,
+            name: "Teste Mínimo",
+            brand_id: 44725150
+        };
+        
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            minimalProduct,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        results.push({ test: 'Produto mínimo', success: true, data: response.data });
+    } catch (error) {
+        results.push({ 
+            test: 'Produto mínimo', 
+            success: false,
+            status: error.response?.status,
+            errors: error.response?.data?.errors || error.response?.data?.data,
+            message: error.response?.data?.message
+        });
+    }
+    
+    // Teste 3: Tentar com diferentes tipos de brand_id
+    const brandVariations = [
+        44725150,           // número
+        "44725150",         // string
+        parseInt("44725150"), // parseInt
+        1,                  // ID 1
+        "1"                 // String "1"
+    ];
+    
+    for (const brandId of brandVariations) {
+        try {
+            console.log(`TESTE 3: Testando brand_id como ${typeof brandId}: ${brandId}`);
+            const testProduct = {
+                sku: `TEST${Date.now()}${Math.random().toString(36).substr(2, 5)}`,
+                name: `Teste Brand ${brandId}`,
+                brand_id: brandId,
+                price: "29.90"
+            };
+            
+            const response = await axios.post(
+                `${config.YAMPI_API}/catalog/products`,
+                testProduct,
+                {
+                    headers: {
+                        'User-Token': config.YAMPI_TOKEN,
+                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+            
+            results.push({ 
+                test: `Brand ID ${brandId} (${typeof brandId})`, 
+                success: true, 
+                product_id: response.data.data?.id 
+            });
+            
+            // Se funcionou, pare de testar
+            break;
+            
+        } catch (error) {
+            results.push({ 
+                test: `Brand ID ${brandId} (${typeof brandId})`, 
+                success: false,
+                error: error.response?.data?.errors?.brand_id || error.response?.data?.message
+            });
+        }
+    }
+    
+    // Retornar todos os resultados
+    res.json({
+        timestamp: new Date().toISOString(),
+        credentials: {
+            token_exists: !!config.YAMPI_TOKEN,
+            secret_exists: !!config.YAMPI_SECRET_KEY,
+            store: process.env.YAMPI_STORE || 'griffestreet'
+        },
+        test_results: results,
+        recommendation: results.some(r => r.success) 
+            ? "✅ Encontramos uma configuração que funciona!" 
+            : "❌ Nenhuma configuração funcionou. Verifique os logs detalhados."
+    });
 });
 
 // Simular resposta
