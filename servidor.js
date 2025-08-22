@@ -242,18 +242,61 @@ async function criarProdutoYampi(dados) {
             }
         }
         
-        // PASSO 3: CONFIGURAR PRODUTO FINAL
-        console.log('🔧 Configurando produto final...');
+        // PASSO 3: ASSOCIAR VARIAÇÕES AO PRODUTO
+        if (temVariacoes) {
+            console.log('🔗 Associando variações ao produto...');
+            
+            try {
+                // Coletar todos os valores IDs dos tamanhos utilizados
+                const valoresIds = dados.tamanhos
+                    .map(tamanho => YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()])
+                    .filter(id => id); // Remove valores undefined
+                
+                const productUpdate = {
+                    has_variations: true,
+                    simple: false,
+                    variations: [
+                        {
+                            variation_id: YAMPI_VARIATIONS.TAMANHO.id,
+                            values: valoresIds
+                        }
+                    ]
+                };
+                
+                console.log('🔄 Dados da associação:', JSON.stringify(productUpdate, null, 2));
+                
+                await axios.put(
+                    `${config.YAMPI_API}/catalog/products/${produto.id}`,
+                    productUpdate,
+                    {
+                        headers: {
+                            'User-Token': config.YAMPI_TOKEN,
+                            'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    }
+                );
+                
+                console.log('✅ Variações associadas ao produto com sucesso!');
+                
+            } catch (variationError) {
+                console.error('⚠️ Erro ao associar variações (produto criado mas pode precisar ajustes manuais):', variationError.message);
+            }
+        }
+        
+        // PASSO 4: CONFIGURAR PRODUTO FINAL
+        console.log('🔧 Configuração final do produto...');
         
         try {
-            const produtoUpdate = {
+            const produtoFinalUpdate = {
                 active: true,
                 manage_stock: temVariacoes, // Ativar gerenciamento apenas se tem variações
             };
             
             await axios.put(
                 `${config.YAMPI_API}/catalog/products/${produto.id}`,
-                produtoUpdate,
+                produtoFinalUpdate,
                 {
                     headers: {
                         'User-Token': config.YAMPI_TOKEN,
@@ -264,10 +307,10 @@ async function criarProdutoYampi(dados) {
                 }
             );
             
-            console.log('✅ Produto configurado e ativado!');
+            console.log('✅ Produto ativado e configurado!');
             
         } catch (updateError) {
-            console.error('⚠️ Erro ao atualizar configurações (produto criado mas pode precisar ajustes manuais):', updateError.message);
+            console.error('⚠️ Erro na configuração final (produto criado mas pode precisar ajustes manuais):', updateError.message);
         }
         
         return produto;
@@ -820,14 +863,15 @@ app.get('/status', (req, res) => {
     res.json({
         status: 'online',
         timestamp: new Date().toISOString(),
-        version: '5.0 - VERSÃO FINAL FUNCIONANDO',
+        version: '5.1 - VARIAÇÕES ASSOCIADAS CORRETAMENTE',
         config: {
             yampi_configured: !!config.YAMPI_TOKEN,
             yampi_store: process.env.YAMPI_STORE || 'griffestreet'
         },
         messages_count: simulatedMessages.length,
         features: [
-            'variacao_automatica_funcionando',
+            'variacao_associada_ao_produto',
+            'has_variations_true',
             'estoque_personalizado_usuario', 
             'gerenciamento_ativado_automatico',
             'precos_desconto_funcionais',
@@ -840,6 +884,7 @@ app.get('/status', (req, res) => {
             'Criar produto base (simple=false)',
             'Criar SKUs com variations_values_ids corretos',
             'Adicionar estoque conforme usuário define',
+            'ASSOCIAR variações ao produto (has_variations=true)',
             'Ativar gerenciamento automático'
         ]
     });
@@ -1041,139 +1086,4 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (reason) => {
     console.error('Promise rejeitada:', reason);
-});
-
-// DEBUG VARIAÇÕES - adicione no servidor.js
-app.get('/debug-tamanhos', async (req, res) => {
-    try {
-        console.log('🔍 DEBUG: Testando todos os tamanhos...');
-        
-        const tamanhos = ['P', 'M', 'G'];
-        const resultados = [];
-        
-        for (const tamanho of tamanhos) {
-            const valorId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
-            
-            console.log(`Tamanho ${tamanho}:`);
-            console.log(`- Valor ID encontrado: ${valorId}`);
-            
-            if (valorId) {
-                resultados.push({
-                    tamanho: tamanho,
-                    valor_id: valorId,
-                    status: 'ID encontrado'
-                });
-            } else {
-                resultados.push({
-                    tamanho: tamanho,
-                    valor_id: null,
-                    status: 'ID NÃO encontrado'
-                });
-            }
-        }
-        
-        res.json({
-            success: true,
-            message: 'Debug dos tamanhos',
-            yampi_variations: YAMPI_VARIATIONS,
-            resultados: resultados,
-            problema_provavel: 'Verificar se todos os IDs estão corretos'
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// CORREÇÃO: Associar variações ao produto
-app.get('/test-fix-variations', async (req, res) => {
-    try {
-        console.log('🔍 CORRIGINDO ASSOCIAÇÃO DE VARIAÇÕES...');
-        
-        const productId = 41990053; // ID do produto criado
-        
-        // 1. ASSOCIAR VARIAÇÃO "TAMANHO" AO PRODUTO
-        console.log('🔗 Associando variação Tamanho ao produto...');
-        
-        // Pode ser que precise usar este endpoint:
-        const variationAssociation = {
-            variation_id: 1190509, // ID da variação Tamanho
-            values: [18183531] // Pelo menos um valor (P)
-        };
-        
-        console.log('📋 Dados da associação:', JSON.stringify(variationAssociation, null, 2));
-        
-        // Tentar associar variação ao produto
-        try {
-            const responseAssoc = await axios.post(
-                `${config.YAMPI_API}/catalog/products/${productId}/variations`,
-                variationAssociation,
-                {
-                    headers: {
-                        'User-Token': config.YAMPI_TOKEN,
-                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                }
-            );
-            
-            console.log('✅ VARIAÇÃO ASSOCIADA:', responseAssoc.data);
-            
-            res.json({
-                success: true,
-                message: 'Variação associada ao produto!',
-                association: responseAssoc.data,
-                next_step: 'Verificar se aparece na página do produto'
-            });
-            
-        } catch (assocError) {
-            console.error('❌ ERRO na associação:', assocError.response?.data);
-            
-            // Se não funcionar, tentar atualizar o produto diretamente
-            console.log('🔄 Tentando atualizar produto diretamente...');
-            
-            const productUpdate = {
-                has_variations: true,
-                simple: false,
-                variations: [
-                    {
-                        variation_id: 1190509,
-                        values: [18183531, 18183532, 18183533]
-                    }
-                ]
-            };
-            
-            const responseUpdate = await axios.put(
-                `${config.YAMPI_API}/catalog/products/${productId}`,
-                productUpdate,
-                {
-                    headers: {
-                        'User-Token': config.YAMPI_TOKEN,
-                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                }
-            );
-            
-            res.json({
-                success: true,
-                message: 'Produto atualizado com variações!',
-                update: responseUpdate.data,
-                original_error: assocError.response?.data
-            });
-        }
-        
-    } catch (error) {
-        console.error('❌ ERRO GERAL:', error.response?.data);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            details: error.response?.data
-        });
-    }
 });
