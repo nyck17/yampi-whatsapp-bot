@@ -1284,3 +1284,61 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
     console.error('Promise rejeitada:', reason);
 });
+
+// TESTE SIMPLES - adicione no final do servidor.js, antes do app.listen
+app.get('/test-simple-product', async (req, res) => {
+    try {
+        console.log('🔍 TESTE PRODUTO SIMPLES...');
+        
+        const brandId = await obterBrandIdValido();
+        console.log('Brand ID obtido:', brandId);
+        
+        const produtoSimples = {
+            sku: `SIMPLE-${Date.now()}`,
+            name: `Produto Simples ${Date.now()}`,
+            brand_id: brandId,
+            simple: true,
+            active: true,
+            price: "50.00",
+            quantity: 10,
+            description: "Produto teste simples",
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        console.log('🔍 DADOS PRODUTO SIMPLES:', JSON.stringify(produtoSimples, null, 2));
+        
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoSimples,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ PRODUTO SIMPLES CRIADO:', response.data.data.id);
+        
+        res.json({
+            success: true,
+            message: 'Produto simples criado!',
+            produto: response.data.data
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO PRODUTO SIMPLES:', error.response?.status);
+        console.error('❌ DADOS ERRO:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
