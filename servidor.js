@@ -1342,3 +1342,81 @@ app.get('/test-simple-product', async (req, res) => {
         });
     }
 });
+
+
+// TESTE VARIAÇÕES - adicione após o test-simple-product
+app.get('/test-variations-only', async (req, res) => {
+    try {
+        console.log('🔍 TESTE APENAS VARIAÇÕES...');
+        
+        // Usar o produto que acabamos de criar
+        const productId = 41987168; // ID do produto simples criado
+        
+        // 1. TESTAR CRIAÇÃO DE VARIAÇÃO
+        console.log('1️⃣ Criando variação...');
+        const variacaoData = {
+            name: "Tamanho"
+        };
+        
+        console.log('🔍 DADOS VARIAÇÃO:', JSON.stringify(variacaoData, null, 2));
+        
+        const responseVariacao = await axios.post(
+            `${config.YAMPI_API}/catalog/variations`,
+            variacaoData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const variacao = responseVariacao.data.data;
+        console.log('✅ VARIAÇÃO CRIADA:', variacao.id);
+        
+        // 2. TESTAR CRIAÇÃO DE VALOR
+        console.log('2️⃣ Criando valor P...');
+        const valorData = {
+            name: "P"
+        };
+        
+        console.log('🔍 DADOS VALOR:', JSON.stringify(valorData, null, 2));
+        
+        const responseValor = await axios.post(
+            `${config.YAMPI_API}/catalog/variations/${variacao.id}/values`,
+            valorData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const valor = responseValor.data.data;
+        console.log('✅ VALOR P CRIADO:', valor.id);
+        
+        res.json({
+            success: true,
+            message: 'Variações testadas com sucesso!',
+            variacao_id: variacao.id,
+            valor_id: valor.id,
+            proximo_passo: 'Agora testar SKU com variations_values_ids'
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO VARIAÇÕES:', error.response?.status);
+        console.error('❌ DADOS ERRO:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data,
+            step: 'Erro nas variações'
+        });
+    }
+});
