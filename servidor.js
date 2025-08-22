@@ -137,11 +137,67 @@ async function criarProdutoYampi(dados) {
         const produto = responseProduto.data.data;
         console.log('✅ Produto base criado! ID:', produto.id);
         
-        // PASSO 2: CRIAR SKUs (VARIAÇÕES) se necessário
+        // PASSO 2: CRIAR VARIAÇÕES E VALORES se necessário
         if (temVariacoes) {
-            console.log('🎯 Criando SKUs/Variações...');
+            console.log('🎯 Criando Variações e Valores...');
+            
+            // PASSO 2.1: CRIAR VARIAÇÃO "Tamanho"
+            const variacaoData = {
+                name: "Tamanho"
+            };
+            
+            console.log('🔄 Criando variação "Tamanho"...');
+            const responseVariacao = await axios.post(
+                `${config.YAMPI_API}/catalog/variations`,
+                variacaoData,
+                {
+                    headers: {
+                        'User-Token': config.YAMPI_TOKEN,
+                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+            
+            const variacao = responseVariacao.data.data;
+            console.log('✅ Variação criada! ID:', variacao.id);
+            
+            // PASSO 2.2: CRIAR VALORES DA VARIAÇÃO (P, M, G, etc.)
+            const valoresIds = [];
             
             for (const tamanho of dados.tamanhos) {
+                console.log(`🔄 Criando valor "${tamanho}" para variação...`);
+                
+                const valorData = {
+                    name: tamanho
+                };
+                
+                const responseValor = await axios.post(
+                    `${config.YAMPI_API}/catalog/variations/${variacao.id}/values`,
+                    valorData,
+                    {
+                        headers: {
+                            'User-Token': config.YAMPI_TOKEN,
+                            'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    }
+                );
+                
+                const valor = responseValor.data.data;
+                valoresIds.push(valor.id);
+                console.log(`✅ Valor "${tamanho}" criado! ID: ${valor.id}`);
+            }
+            
+            // PASSO 2.3: CRIAR SKUs COM variations_values_ids CORRETOS
+            console.log('🎯 Criando SKUs com valores de variação...');
+            
+            for (let i = 0; i < dados.tamanhos.length; i++) {
+                const tamanho = dados.tamanhos[i];
+                const valorId = valoresIds[i];
+                
                 const skuData = {
                     product_id: produto.id,
                     sku: `${produto.sku}-${tamanho}`,
@@ -152,22 +208,22 @@ async function criarProdutoYampi(dados) {
                     price_sale: precoVenda.toString(),
                     price_discount: precoPromocional.toString(),
                     
-                    // CAMPOS OBRIGATÓRIOS DESCOBERTOS:
-                    price_cost: (precoVenda * 0.6).toFixed(2), // 60% do preço de venda
-                    blocked_sale: false, // Permitir venda
-                    variations_values_ids: [], // Array vazio por enquanto
+                    // CAMPOS OBRIGATÓRIOS:
+                    price_cost: (precoVenda * 0.6).toFixed(2),
+                    blocked_sale: false,
+                    variations_values_ids: [valorId], // ID do valor específico!
                     
                     // STATUS
                     active: true,
                     
-                    // DIMENSÕES (herdam do produto)
+                    // DIMENSÕES
                     weight: produtoBase.weight,
                     height: produtoBase.height,
                     width: produtoBase.width,
                     length: produtoBase.length
                 };
                 
-                console.log(`- Criando SKU ${tamanho}...`);
+                console.log(`- Criando SKU ${tamanho} com valor ID ${valorId}...`);
                 
                 try {
                     // CRIAR SKU (VARIAÇÃO) - COM LOGS DETALHADOS
@@ -191,7 +247,7 @@ async function criarProdutoYampi(dados) {
                     const sku = responseSKU.data.data;
                     console.log(`✅ SKU ${tamanho} criado! ID: ${sku.id}`);
                     
-                    // PASSO 3: CRIAR ESTOQUE PARA ESTE SKU
+                    // PASSO 2.4: CRIAR ESTOQUE PARA ESTE SKU
                     const estoqueQuantidade = dados.estoque[tamanho] || 0;
                     
                     if (estoqueQuantidade > 0) {
@@ -623,8 +679,8 @@ app.get('/debug-yampi', async (req, res) => {
         );
         console.log('✅ Produto simples criado:', responseProdutoSimples.data.data.id);
         
-        // 3. Testar criação de produto com variações
-        console.log('3️⃣ Testando produto com variações...');
+        // 3. Testar criação de produto com variações COMPLETO
+        console.log('3️⃣ Testando produto com variações COMPLETO...');
         const produtoVariacoes = {
             sku: `TEST-VAR-${Date.now()}`,
             name: `Produto Teste Variações ${Date.now()}`,
@@ -657,8 +713,57 @@ app.get('/debug-yampi', async (req, res) => {
         const produtoVar = responseProdutoVar.data.data;
         console.log('✅ Produto variações criado:', produtoVar.id);
         
-        // 4. Testar criação de SKU COM CAMPOS OBRIGATÓRIOS
-        console.log('4️⃣ Testando criação de SKU...');
+        // 4. Testar criação de variação
+        console.log('4️⃣ Testando criação de variação...');
+        const variacaoData = {
+            name: "Tamanho"
+        };
+        
+        const responseVariacao = await axios.post(
+            `${config.YAMPI_API}/catalog/variations`,
+            variacaoData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        const variacao = responseVariacao.data.data;
+        console.log('✅ Variação criada:', variacao.id);
+        
+        // 5. Testar criação de valores da variação
+        console.log('5️⃣ Testando criação de valores...');
+        const tamanhos = ['P', 'M', 'G'];
+        const valoresIds = [];
+        
+        for (const tamanho of tamanhos) {
+            const valorData = {
+                name: tamanho
+            };
+            
+            const responseValor = await axios.post(
+                `${config.YAMPI_API}/catalog/variations/${variacao.id}/values`,
+                valorData,
+                {
+                    headers: {
+                        'User-Token': config.YAMPI_TOKEN,
+                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+            
+            const valor = responseValor.data.data;
+            valoresIds.push(valor.id);
+            console.log(`✅ Valor ${tamanho} criado:`, valor.id);
+        }
+        
+        // 6. Testar criação de SKU COM variations_values_ids
+        console.log('6️⃣ Testando criação de SKU com valores...');
         const skuData = {
             product_id: produtoVar.id,
             sku: `${produtoVar.sku}-P`,
@@ -667,10 +772,10 @@ app.get('/debug-yampi', async (req, res) => {
             price_sale: "80.00",
             price_discount: "70.00",
             
-            // CAMPOS OBRIGATÓRIOS DESCOBERTOS:
-            price_cost: "48.00", // 60% do preço
+            // CAMPOS OBRIGATÓRIOS CORRETOS:
+            price_cost: "48.00",
             blocked_sale: false,
-            variations_values_ids: [],
+            variations_values_ids: [valoresIds[0]], // ID do valor "P"
             
             active: true,
             weight: 0.5,
@@ -696,8 +801,8 @@ app.get('/debug-yampi', async (req, res) => {
         const sku = responseSKU.data.data;
         console.log('✅ SKU criado:', sku.id);
         
-        // 5. Testar criação de estoque
-        console.log('5️⃣ Testando criação de estoque...');
+        // 7. Testar criação de estoque
+        console.log('7️⃣ Testando criação de estoque...');
         const estoqueData = {
             stock_id: 1,
             quantity: 5,
@@ -722,15 +827,23 @@ app.get('/debug-yampi', async (req, res) => {
         
         res.json({
             success: true,
-            message: '🎉 DEBUG COMPLETO - TUDO FUNCIONANDO!',
+            message: '🎉 DEBUG COMPLETO - FLUXO TOTAL FUNCIONANDO!',
             results: {
                 conexao: 'OK',
                 produto_simples: responseProdutoSimples.data.data.id,
                 produto_variacoes: produtoVar.id,
+                variacao_criada: variacao.id,
+                valores_criados: valoresIds,
                 sku_criado: sku.id,
                 estoque_criado: responseEstoque.data.data.id
             },
-            logs: 'Verifique o console do Railway para logs detalhados'
+            fluxo_completo: [
+                '1. Produto base ✅',
+                '2. Variação "Tamanho" ✅', 
+                '3. Valores P,M,G ✅',
+                '4. SKUs com variations_values_ids ✅',
+                '5. Estoques ✅'
+            ]
         });
         
     } catch (error) {
@@ -982,7 +1095,9 @@ app.get('/status', (req, res) => {
         ],
         fluxo_yampi: [
             'POST /catalog/products (produto base)',
-            'POST /catalog/skus (variações)',
+            'POST /catalog/variations (variação)',
+            'POST /catalog/variations/{id}/values (valores)',
+            'POST /catalog/skus (SKUs com variations_values_ids)',
             'POST /catalog/skus/{id}/stocks (estoques)'
         ]
     });
@@ -1061,14 +1176,14 @@ Descrição: Teste definitivo</pre>
                 </div>
                 
                 <div class="example">
-                    <h3>🔧 CORREÇÃO DOS CAMPOS OBRIGATÓRIOS:</h3>
-                    <p><strong>Erro 422 resolvido! Campos adicionados:</strong></p>
-                    <ul>
-                        <li><strong>price_cost:</strong> Preço de custo (60% do preço venda)</li>
-                        <li><strong>blocked_sale:</strong> false (permitir venda)</li>
-                        <li><strong>variations_values_ids:</strong> [] (array vazio)</li>
-                    </ul>
-                    <p>✅ Agora os SKUs serão criados corretamente!</p>
+                    <h3>🎯 FLUXO COMPLETO CORRETO:</h3>
+                    <p><strong>Baseado na documentação oficial:</strong></p>
+                    <div class="flow-step">1️⃣ POST /catalog/products → Produto base</div>
+                    <div class="flow-step">2️⃣ POST /catalog/variations → Variação "Tamanho"</div>
+                    <div class="flow-step">3️⃣ POST /catalog/variations/{id}/values → Valores P,M,G</div>
+                    <div class="flow-step">4️⃣ POST /catalog/skus → SKUs com variations_values_ids</div>
+                    <div class="flow-step">5️⃣ POST /catalog/skus/{id}/stocks → Estoques</div>
+                    <p>✅ Agora as variações aparecerão no painel!</p>
                 </div>
                 
                 <p style="text-align: center; color: #666; margin-top: 30px;">
