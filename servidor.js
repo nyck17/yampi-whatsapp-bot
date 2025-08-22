@@ -1703,3 +1703,41 @@ app.get('/test-complete-flow', async (req, res) => {
         });
     }
 });
+
+// BUSCAR ESTOQUES DISPONÍVEIS
+app.get('/test-available-stocks', async (req, res) => {
+    try {
+        console.log('🔍 BUSCANDO ESTOQUES DISPONÍVEIS...');
+        
+        const responseEstoques = await axios.get(
+            `${config.YAMPI_API}/catalog/stocks`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const estoques = responseEstoques.data.data;
+        console.log('📋 ESTOQUES ENCONTRADOS:', estoques.length);
+        
+        res.json({
+            success: true,
+            message: 'Estoques encontrados!',
+            estoques: estoques,
+            primeiro_estoque_id: estoques.length > 0 ? estoques[0].id : null,
+            uso: 'Use o primeiro_estoque_id no campo stock_id'
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO BUSCAR ESTOQUES:', error.response?.data);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
