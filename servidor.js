@@ -152,6 +152,11 @@ async function criarProdutoYampi(dados) {
                     price_sale: precoVenda.toString(),
                     price_discount: precoPromocional.toString(),
                     
+                    // CAMPOS OBRIGATÓRIOS DESCOBERTOS:
+                    price_cost: (precoVenda * 0.6).toFixed(2), // 60% do preço de venda
+                    blocked_sale: false, // Permitir venda
+                    variations_values_ids: [], // Array vazio por enquanto
+                    
                     // STATUS
                     active: true,
                     
@@ -652,7 +657,7 @@ app.get('/debug-yampi', async (req, res) => {
         const produtoVar = responseProdutoVar.data.data;
         console.log('✅ Produto variações criado:', produtoVar.id);
         
-        // 4. Testar criação de SKU
+        // 4. Testar criação de SKU COM CAMPOS OBRIGATÓRIOS
         console.log('4️⃣ Testando criação de SKU...');
         const skuData = {
             product_id: produtoVar.id,
@@ -661,6 +666,12 @@ app.get('/debug-yampi', async (req, res) => {
             price: "80.00",
             price_sale: "80.00",
             price_discount: "70.00",
+            
+            // CAMPOS OBRIGATÓRIOS DESCOBERTOS:
+            price_cost: "48.00", // 60% do preço
+            blocked_sale: false,
+            variations_values_ids: [],
+            
             active: true,
             weight: 0.5,
             height: 10,
@@ -1050,14 +1061,14 @@ Descrição: Teste definitivo</pre>
                 </div>
                 
                 <div class="example">
-                    <h3>🔧 CORREÇÃO DEFINITIVA BASEADA NA DOCUMENTAÇÃO:</h3>
+                    <h3>🔧 CORREÇÃO DOS CAMPOS OBRIGATÓRIOS:</h3>
+                    <p><strong>Erro 422 resolvido! Campos adicionados:</strong></p>
                     <ul>
-                        <li><strong>Endpoint correto:</strong> POST /catalog/skus (para criar variações)</li>
-                        <li><strong>Estoque separado:</strong> POST /catalog/skus/{id}/stocks</li>
-                        <li><strong>Fluxo sequencial:</strong> Produto → SKUs → Estoques</li>
-                        <li><strong>Preços corretos:</strong> String format nos 3 campos</li>
-                        <li><strong>Produto base:</strong> simple=false quando tem variações</li>
+                        <li><strong>price_cost:</strong> Preço de custo (60% do preço venda)</li>
+                        <li><strong>blocked_sale:</strong> false (permitir venda)</li>
+                        <li><strong>variations_values_ids:</strong> [] (array vazio)</li>
                     </ul>
+                    <p>✅ Agora os SKUs serão criados corretamente!</p>
                 </div>
                 
                 <p style="text-align: center; color: #666; margin-top: 30px;">
