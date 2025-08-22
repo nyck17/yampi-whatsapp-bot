@@ -1420,3 +1420,72 @@ app.get('/test-variations-only', async (req, res) => {
         });
     }
 });
+
+// TESTE BUSCAR VARIAÇÕES EXISTENTES
+app.get('/test-existing-variations', async (req, res) => {
+    try {
+        console.log('🔍 BUSCANDO VARIAÇÕES EXISTENTES...');
+        
+        // Listar variações existentes
+        const responseVariacoes = await axios.get(
+            `${config.YAMPI_API}/catalog/variations`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const variacoes = responseVariacoes.data.data;
+        console.log('📋 VARIAÇÕES ENCONTRADAS:', variacoes.length);
+        
+        // Procurar variação "Tamanho"
+        const variacaoTamanho = variacoes.find(v => v.name.toLowerCase() === 'tamanho');
+        
+        if (variacaoTamanho) {
+            console.log('✅ VARIAÇÃO TAMANHO ENCONTRADA:', variacaoTamanho.id);
+            
+            // Listar valores desta variação
+            const responseValores = await axios.get(
+                `${config.YAMPI_API}/catalog/variations/${variacaoTamanho.id}/values`,
+                {
+                    headers: {
+                        'User-Token': config.YAMPI_TOKEN,
+                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+            
+            const valores = responseValores.data.data;
+            console.log('📋 VALORES ENCONTRADOS:', valores.map(v => v.name));
+            
+            res.json({
+                success: true,
+                message: 'Variação Tamanho já existe!',
+                variacao: variacaoTamanho,
+                valores_existentes: valores,
+                solucao: 'Usar variação existente em vez de criar nova'
+            });
+            
+        } else {
+            res.json({
+                success: false,
+                message: 'Variação Tamanho não encontrada',
+                todas_variacoes: variacoes
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ ERRO:', error.response?.data);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
