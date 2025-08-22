@@ -1920,3 +1920,100 @@ app.get('/test-sku-stock', async (req, res) => {
         });
     }
 });
+
+// FINALIZAR PRODUTO COM ESTOQUE
+app.get('/test-finalize-product', async (req, res) => {
+    try {
+        console.log('🔍 FINALIZANDO PRODUTO COM ESTOQUE...');
+        
+        const skuPId = 279283523; // SKU P
+        const skuMId = 279283524; // SKU M
+        
+        // 1. ATIVAR ESTOQUE E ADICIONAR QUANTIDADE PARA SKU P
+        console.log('📦 Adicionando estoque SKU P...');
+        const estoqueP = {
+            quantity: 5,
+            min_quantity: 0
+        };
+        
+        const responseEstoqueP = await axios.post(
+            `${config.YAMPI_API}/catalog/skus/${skuPId}/stocks`,
+            estoqueP,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ ESTOQUE P CRIADO:', responseEstoqueP.data.data);
+        
+        // 2. ATIVAR ESTOQUE E ADICIONAR QUANTIDADE PARA SKU M  
+        console.log('📦 Adicionando estoque SKU M...');
+        const estoqueM = {
+            quantity: 10,
+            min_quantity: 0
+        };
+        
+        const responseEstoqueM = await axios.post(
+            `${config.YAMPI_API}/catalog/skus/${skuMId}/stocks`,
+            estoqueM,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ ESTOQUE M CRIADO:', responseEstoqueM.data.data);
+        
+        // 3. ATUALIZAR PRODUTO PARA ATIVAR E CONFIGURAR POSTAGEM
+        const produtoUpdate = {
+            active: true,
+            shipping_time: 1, // 1 dia útil
+            manage_stock: true // Ativar gerenciamento de estoque
+        };
+        
+        console.log('🔄 Atualizando configurações do produto...');
+        const responseUpdate = await axios.put(
+            `${config.YAMPI_API}/catalog/products/41989756`,
+            produtoUpdate,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ PRODUTO ATUALIZADO:', responseUpdate.data.data);
+        
+        res.json({
+            success: true,
+            message: '🎉 PRODUTO FINALIZADO COMPLETAMENTE!',
+            estoque_p: responseEstoqueP.data.data,
+            estoque_m: responseEstoqueM.data.data,
+            produto_atualizado: responseUpdate.data.data,
+            status: '✅ PRODUTO ATIVO COM ESTOQUE E PRAZO CONFIGURADO!',
+            yampi_painel: 'https://painel.yampi.com.br/catalog/products/41989756'
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO:', error.response?.status);
+        console.error('❌ DADOS:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
