@@ -1873,3 +1873,50 @@ app.get('/test-sku-only', async (req, res) => {
         });
     }
 });
+
+// TESTE ESTOQUE CORRETO PARA SKU
+app.get('/test-sku-stock', async (req, res) => {
+    try {
+        console.log('🔍 TESTE ESTOQUE PARA SKU...');
+        
+        const skuId = 279283523; // SKU P criado
+        
+        // Tentar criar estoque SEM stock_id (pode ser opcional)
+        const estoqueData = {
+            quantity: 5,
+            min_quantity: 0
+        };
+        
+        console.log('🔍 DADOS ESTOQUE:', JSON.stringify(estoqueData, null, 2));
+        
+        const responseEstoque = await axios.post(
+            `${config.YAMPI_API}/catalog/skus/${skuId}/stocks`,
+            estoqueData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ ESTOQUE CRIADO:', responseEstoque.data.data);
+        
+        res.json({
+            success: true,
+            message: 'Estoque criado com sucesso!',
+            estoque: responseEstoque.data.data
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO ESTOQUE:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
