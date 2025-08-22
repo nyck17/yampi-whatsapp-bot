@@ -1042,3 +1042,48 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
     console.error('Promise rejeitada:', reason);
 });
+
+// DEBUG VARIAÇÕES - adicione no servidor.js
+app.get('/debug-tamanhos', async (req, res) => {
+    try {
+        console.log('🔍 DEBUG: Testando todos os tamanhos...');
+        
+        const tamanhos = ['P', 'M', 'G'];
+        const resultados = [];
+        
+        for (const tamanho of tamanhos) {
+            const valorId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
+            
+            console.log(`Tamanho ${tamanho}:`);
+            console.log(`- Valor ID encontrado: ${valorId}`);
+            
+            if (valorId) {
+                resultados.push({
+                    tamanho: tamanho,
+                    valor_id: valorId,
+                    status: 'ID encontrado'
+                });
+            } else {
+                resultados.push({
+                    tamanho: tamanho,
+                    valor_id: null,
+                    status: 'ID NÃO encontrado'
+                });
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: 'Debug dos tamanhos',
+            yampi_variations: YAMPI_VARIATIONS,
+            resultados: resultados,
+            problema_provavel: 'Verificar se todos os IDs estão corretos'
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
