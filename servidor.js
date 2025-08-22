@@ -1578,3 +1578,128 @@ app.get('/test-sku-with-correct-ids', async (req, res) => {
         });
     }
 });
+
+// TESTE PRODUTO COMPLETO COM VARIAÇÕES
+app.get('/test-complete-flow', async (req, res) => {
+    try {
+        console.log('🔍 TESTE FLUXO COMPLETO...');
+        
+        const brandId = await obterBrandIdValido();
+        
+        // 1. CRIAR PRODUTO BASE PARA VARIAÇÕES
+        const produtoVariacoes = {
+            sku: `VAR-PRODUCT-${Date.now()}`,
+            name: `Produto Variações ${Date.now()}`,
+            brand_id: brandId,
+            simple: false, // IMPORTANTE: false para variações
+            active: true,
+            price: "80.00",
+            price_sale: "80.00",
+            price_discount: "70.00",
+            quantity: 0, // ZERO para produtos com variações
+            description: "Produto teste com variações",
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        console.log('🔍 CRIANDO PRODUTO VARIAÇÕES:', JSON.stringify(produtoVariacoes, null, 2));
+        
+        const responseProduto = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoVariacoes,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const produto = responseProduto.data.data;
+        console.log('✅ PRODUTO VARIAÇÕES CRIADO:', produto.id);
+        
+        // 2. CRIAR SKU TAMANHO P (usando IDs existentes)
+        const skuDataP = {
+            product_id: produto.id,
+            sku: `${produto.sku}-P`,
+            title: "P",
+            price: "80.00",
+            price_sale: "80.00",
+            price_discount: "70.00",
+            price_cost: "48.00",
+            blocked_sale: false,
+            variations_values_ids: [18183531], // ID do valor "P" existente
+            active: true,
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        console.log('🔍 CRIANDO SKU P:', JSON.stringify(skuDataP, null, 2));
+        
+        const responseSkuP = await axios.post(
+            `${config.YAMPI_API}/catalog/skus`,
+            skuDataP,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const skuP = responseSkuP.data.data;
+        console.log('✅ SKU P CRIADO:', skuP.id);
+        
+        // 3. CRIAR ESTOQUE PARA SKU P
+        const estoqueDataP = {
+            stock_id: 1,
+            quantity: 5,
+            min_quantity: 0
+        };
+        
+        const responseEstoqueP = await axios.post(
+            `${config.YAMPI_API}/catalog/skus/${skuP.id}/stocks`,
+            estoqueDataP,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ ESTOQUE P CRIADO:', responseEstoqueP.data.data.id);
+        
+        res.json({
+            success: true,
+            message: '🎉 FLUXO COMPLETO FUNCIONANDO!',
+            produto_id: produto.id,
+            produto_url: produto.url,
+            sku_p_criado: skuP.id,
+            estoque_p_criado: responseEstoqueP.data.data.id,
+            yampi_painel: `https://painel.yampi.com.br/catalog/products/${produto.id}`,
+            status: '✅ VARIAÇÕES DEVEM APARECER NO PAINEL YAMPI!'
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO FLUXO COMPLETO:', error.response?.status);
+        console.error('❌ DADOS ERRO:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data,
+            step: 'Erro no fluxo completo'
+        });
+    }
+});
