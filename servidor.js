@@ -1741,3 +1741,135 @@ app.get('/test-available-stocks', async (req, res) => {
         });
     }
 });
+
+// TESTE APENAS SKU SEM ESTOQUE
+app.get('/test-sku-only', async (req, res) => {
+    try {
+        console.log('🔍 TESTE APENAS SKU SEM ESTOQUE...');
+        
+        const brandId = await obterBrandIdValido();
+        
+        // 1. CRIAR PRODUTO PARA VARIAÇÕES
+        const produtoVariacoes = {
+            sku: `SKU-TEST-${Date.now()}`,
+            name: `Produto SKU Teste ${Date.now()}`,
+            brand_id: brandId,
+            simple: false,
+            active: true,
+            price: "80.00",
+            price_sale: "80.00",
+            price_discount: "70.00",
+            quantity: 0,
+            description: "Produto teste apenas SKU",
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        const responseProduto = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoVariacoes,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const produto = responseProduto.data.data;
+        console.log('✅ PRODUTO CRIADO:', produto.id);
+        
+        // 2. CRIAR SKU TAMANHO P
+        const skuDataP = {
+            product_id: produto.id,
+            sku: `${produto.sku}-P`,
+            title: "P",
+            price: "80.00",
+            price_sale: "80.00",
+            price_discount: "70.00",
+            price_cost: "48.00",
+            blocked_sale: false,
+            variations_values_ids: [18183531], // ID do valor "P"
+            active: true,
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        const responseSkuP = await axios.post(
+            `${config.YAMPI_API}/catalog/skus`,
+            skuDataP,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const skuP = responseSkuP.data.data;
+        console.log('✅ SKU P CRIADO:', skuP.id);
+        
+        // 3. CRIAR SKU TAMANHO M
+        const skuDataM = {
+            product_id: produto.id,
+            sku: `${produto.sku}-M`,
+            title: "M",
+            price: "80.00",
+            price_sale: "80.00",
+            price_discount: "70.00",
+            price_cost: "48.00",
+            blocked_sale: false,
+            variations_values_ids: [18183532], // ID do valor "M"
+            active: true,
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        const responseSkuM = await axios.post(
+            `${config.YAMPI_API}/catalog/skus`,
+            skuDataM,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const skuM = responseSkuM.data.data;
+        console.log('✅ SKU M CRIADO:', skuM.id);
+        
+        res.json({
+            success: true,
+            message: '🎉 SKUs CRIADOS COM SUCESSO!',
+            produto_id: produto.id,
+            produto_url: produto.url,
+            sku_p: skuP.id,
+            sku_m: skuM.id,
+            yampi_painel: `https://painel.yampi.com.br/catalog/products/${produto.id}`,
+            status: '🎯 AGORA VERIFIQUE SE AS VARIAÇÕES APARECEM NO PAINEL!'
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO:', error.response?.status);
+        console.error('❌ DADOS:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
