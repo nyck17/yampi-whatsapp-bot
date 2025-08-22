@@ -165,7 +165,9 @@ async function criarProdutoYampi(dados) {
                 console.log(`- Criando SKU ${tamanho}...`);
                 
                 try {
-                    // CRIAR SKU (VARIAÇÃO)
+                    // CRIAR SKU (VARIAÇÃO) - COM LOGS DETALHADOS
+                    console.log(`🔍 DADOS DO SKU ${tamanho}:`, JSON.stringify(skuData, null, 2));
+                    
                     const responseSKU = await axios.post(
                         `${config.YAMPI_API}/catalog/skus`,
                         skuData,
@@ -179,6 +181,8 @@ async function criarProdutoYampi(dados) {
                         }
                     );
                     
+                    console.log(`📋 RESPONSE SKU ${tamanho}:`, JSON.stringify(responseSKU.data, null, 2));
+                    
                     const sku = responseSKU.data.data;
                     console.log(`✅ SKU ${tamanho} criado! ID: ${sku.id}`);
                     
@@ -186,7 +190,7 @@ async function criarProdutoYampi(dados) {
                     const estoqueQuantidade = dados.estoque[tamanho] || 0;
                     
                     if (estoqueQuantidade > 0) {
-                        console.log(`📦 Adicionando estoque ${estoqueQuantidade} para SKU ${tamanho}...`);
+                        console.log(`📦 CRIANDO ESTOQUE para SKU ${sku.id} - Quantidade: ${estoqueQuantidade}`);
                         
                         const estoqueData = {
                             stock_id: 1, // ID do estoque padrão
@@ -194,7 +198,9 @@ async function criarProdutoYampi(dados) {
                             min_quantity: 0
                         };
                         
-                        await axios.post(
+                        console.log(`🔍 DADOS DO ESTOQUE:`, JSON.stringify(estoqueData, null, 2));
+                        
+                        const responseEstoque = await axios.post(
                             `${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`,
                             estoqueData,
                             {
@@ -207,11 +213,20 @@ async function criarProdutoYampi(dados) {
                             }
                         );
                         
+                        console.log(`📋 RESPONSE ESTOQUE:`, JSON.stringify(responseEstoque.data, null, 2));
                         console.log(`✅ Estoque ${estoqueQuantidade} adicionado para SKU ${tamanho}`);
                     }
                     
                 } catch (errorSKU) {
-                    console.error(`❌ Erro ao criar SKU ${tamanho}:`, errorSKU.response?.data || errorSKU.message);
+                    console.error(`❌ ERRO DETALHADO ao criar SKU ${tamanho}:`);
+                    console.error('Status:', errorSKU.response?.status);
+                    console.error('Headers:', errorSKU.response?.headers);
+                    console.error('Data:', JSON.stringify(errorSKU.response?.data, null, 2));
+                    console.error('Config:', JSON.stringify(errorSKU.config, null, 2));
+                    
+                    // Log para Railway
+                    log(`ERRO SKU ${tamanho}: ${errorSKU.response?.status} - ${JSON.stringify(errorSKU.response?.data)}`);
+                    
                     // Continua com outros SKUs mesmo se um falhar
                 }
             }
@@ -549,7 +564,200 @@ app.get('/test-create-definitive', async (req, res) => {
     }
 });
 
-// Teste API Yampi
+// Endpoint especial para debug no Railway
+app.get('/debug-yampi', async (req, res) => {
+    try {
+        console.log('🔍 INICIANDO DEBUG COMPLETO...');
+        
+        // 1. Testar conexão básica
+        console.log('1️⃣ Testando conexão API...');
+        const testConnection = await axios.get(
+            `${config.YAMPI_API}/catalog/products`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                params: { limit: 1 }
+            }
+        );
+        console.log('✅ Conexão OK');
+        
+        // 2. Testar criação de produto simples
+        console.log('2️⃣ Testando produto simples...');
+        const produtoSimples = {
+            sku: `TEST-SIMPLE-${Date.now()}`,
+            name: `Produto Teste Simples ${Date.now()}`,
+            brand_id: await obterBrandIdValido(),
+            simple: true,
+            active: true,
+            price: "50.00",
+            price_sale: "50.00",
+            price_discount: "45.00",
+            quantity: 10,
+            description: "Produto teste simples",
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        const responseProdutoSimples = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoSimples,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        console.log('✅ Produto simples criado:', responseProdutoSimples.data.data.id);
+        
+        // 3. Testar criação de produto com variações
+        console.log('3️⃣ Testando produto com variações...');
+        const produtoVariacoes = {
+            sku: `TEST-VAR-${Date.now()}`,
+            name: `Produto Teste Variações ${Date.now()}`,
+            brand_id: await obterBrandIdValido(),
+            simple: false,
+            active: true,
+            price: "80.00",
+            price_sale: "80.00", 
+            price_discount: "70.00",
+            quantity: 0,
+            description: "Produto teste com variações",
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        const responseProdutoVar = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoVariacoes,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        const produtoVar = responseProdutoVar.data.data;
+        console.log('✅ Produto variações criado:', produtoVar.id);
+        
+        // 4. Testar criação de SKU
+        console.log('4️⃣ Testando criação de SKU...');
+        const skuData = {
+            product_id: produtoVar.id,
+            sku: `${produtoVar.sku}-P`,
+            title: "P",
+            price: "80.00",
+            price_sale: "80.00",
+            price_discount: "70.00",
+            active: true,
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        console.log('📋 Dados SKU:', JSON.stringify(skuData, null, 2));
+        
+        const responseSKU = await axios.post(
+            `${config.YAMPI_API}/catalog/skus`,
+            skuData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        const sku = responseSKU.data.data;
+        console.log('✅ SKU criado:', sku.id);
+        
+        // 5. Testar criação de estoque
+        console.log('5️⃣ Testando criação de estoque...');
+        const estoqueData = {
+            stock_id: 1,
+            quantity: 5,
+            min_quantity: 0
+        };
+        
+        console.log('📋 Dados Estoque:', JSON.stringify(estoqueData, null, 2));
+        
+        const responseEstoque = await axios.post(
+            `${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`,
+            estoqueData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        console.log('✅ Estoque criado:', responseEstoque.data.data.id);
+        
+        res.json({
+            success: true,
+            message: '🎉 DEBUG COMPLETO - TUDO FUNCIONANDO!',
+            results: {
+                conexao: 'OK',
+                produto_simples: responseProdutoSimples.data.data.id,
+                produto_variacoes: produtoVar.id,
+                sku_criado: sku.id,
+                estoque_criado: responseEstoque.data.data.id
+            },
+            logs: 'Verifique o console do Railway para logs detalhados'
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO NO DEBUG:');
+        console.error('Status:', error.response?.status);
+        console.error('Data:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data,
+            step: 'Verifique os logs do Railway para ver onde parou'
+        });
+    }
+});
+
+// Endpoint para logs do Railway
+app.get('/railway-logs', (req, res) => {
+    const logs = simulatedMessages
+        .slice(-100) // Últimos 100 logs
+        .map(msg => ({
+            timestamp: msg.timestamp,
+            message: msg.message,
+            type: msg.type
+        }));
+    
+    res.json({ 
+        logs,
+        total: simulatedMessages.length,
+        railway_env: {
+            YAMPI_STORE: process.env.YAMPI_STORE,
+            YAMPI_TOKEN_CONFIGURED: !!process.env.YAMPI_TOKEN,
+            YAMPI_SECRET_CONFIGURED: !!process.env.YAMPI_SECRET_KEY,
+            PORT: process.env.PORT,
+            NODE_ENV: process.env.NODE_ENV
+        }
+    });
+});
 app.get('/test-yampi', async (req, res) => {
     try {
         const testResponse = await axios.get(
@@ -807,8 +1015,10 @@ app.get('/', (req, res) => {
                 </div>
                 
                 <div class="test-buttons">
+                    <button class="test-btn success" onclick="testarEndpoint('/debug-yampi')">🔍 DEBUG RAILWAY</button>
                     <button class="test-btn success" onclick="testarEndpoint('/test-create-definitive')">🎯 TESTE DEFINITIVO</button>
                     <a href="/whatsapp" class="test-btn success" style="font-size: 16px; font-weight: bold;">📱 WHATSAPP DEFINITIVO</a>
+                    <a href="/railway-logs" class="test-btn" target="_blank">📋 LOGS RAILWAY</a>
                     <a href="/test-yampi" class="test-btn">🔌 Testar API</a>
                     <a href="/status" class="test-btn">📊 Status v4.0</a>
                 </div>
