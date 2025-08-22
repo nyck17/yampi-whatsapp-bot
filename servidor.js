@@ -1489,3 +1489,92 @@ app.get('/test-existing-variations', async (req, res) => {
         });
     }
 });
+
+// TESTE SKU COM IDs CORRETOS
+app.get('/test-sku-with-correct-ids', async (req, res) => {
+    try {
+        console.log('🔍 TESTE SKU COM IDs CORRETOS...');
+        
+        const productId = 41987168; // Produto simples criado antes
+        
+        // Dados do SKU com variations_values_ids CORRETO
+        const skuData = {
+            product_id: productId,
+            sku: `SIMPLE-${Date.now()}-P`,
+            title: "P",
+            price: "50.00",
+            price_sale: "50.00",
+            price_discount: "45.00",
+            
+            // CAMPOS OBRIGATÓRIOS:
+            price_cost: "30.00",
+            blocked_sale: false,
+            variations_values_ids: [18183531], // ID do valor "P" existente!
+            
+            active: true,
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        console.log('🔍 DADOS SKU:', JSON.stringify(skuData, null, 2));
+        
+        const responseSKU = await axios.post(
+            `${config.YAMPI_API}/catalog/skus`,
+            skuData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const sku = responseSKU.data.data;
+        console.log('✅ SKU CRIADO:', sku.id);
+        
+        // Testar estoque
+        const estoqueData = {
+            stock_id: 1,
+            quantity: 5,
+            min_quantity: 0
+        };
+        
+        const responseEstoque = await axios.post(
+            `${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`,
+            estoqueData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        console.log('✅ ESTOQUE CRIADO:', responseEstoque.data.data.id);
+        
+        res.json({
+            success: true,
+            message: '🎉 FLUXO COMPLETO FUNCIONANDO!',
+            sku_criado: sku.id,
+            estoque_criado: responseEstoque.data.data.id,
+            produto_url: `https://painel.yampi.com.br/catalog/products/${productId}`,
+            status: 'VARIAÇÕES DEVEM APARECER NO PAINEL!'
+        });
+        
+    } catch (error) {
+        console.error('❌ ERRO SKU:', error.response?.status);
+        console.error('❌ DADOS ERRO:', JSON.stringify(error.response?.data, null, 2));
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
