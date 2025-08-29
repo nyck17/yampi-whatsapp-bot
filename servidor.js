@@ -1112,3 +1112,335 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
     console.error('Promise rejeitada:', reason);
 });
+
+// ADICIONE ESTES ENDPOINTS DE DEBUG NO FINAL DO SEU servidor.js (antes do app.listen)
+
+// ====================================
+// ENDPOINTS DE DEBUG E ANÁLISE
+// ====================================
+
+// Analisar produto existente com variações
+app.get('/analyze-product/:id', async (req, res) => {
+    try {
+        const productId = req.params.id;
+        
+        console.log(`🔍 Analisando produto ${productId}...`);
+        
+        // Buscar dados completos do produto
+        const productResponse = await axios.get(
+            `${config.YAMPI_API}/catalog/products/${productId}`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const product = productResponse.data.data;
+        
+        // Buscar SKUs do produto
+        const skusResponse = await axios.get(
+            `${config.YAMPI_API}/catalog/skus`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                params: {
+                    product_id: productId,
+                    limit: 50
+                }
+            }
+        );
+        
+        const skus = skusResponse.data.data;
+        
+        // Análise da estrutura
+        const analysis = {
+            produto: {
+                id: product.id,
+                name: product.name,
+                has_variations: product.has_variations,
+                simple: product.simple,
+                
+                // CAMPOS IMPORTANTES PARA ANÁLISE
+                variations: product.variations || 'NÃO TEM',
+                variations_values: product.variations_values || 'NÃO TEM',
+                variation_attributes: product.variation_attributes || 'NÃO TEM',
+                
+                // Outros campos relevantes
+                manage_stock: product.manage_stock,
+                track_inventory: product.track_inventory,
+                quantity: product.quantity
+            },
+            
+            skus: skus.map(sku => ({
+                id: sku.id,
+                sku: sku.sku,
+                title: sku.title,
+                
+                // CAMPOS CRÍTICOS
+                variations: sku.variations || 'NÃO TEM',
+                variations_values: sku.variations_values || 'NÃO TEM',
+                variations_values_ids: sku.variations_values_ids || 'NÃO TEM',
+                
+                // Estoque
+                quantity: sku.quantity,
+                stocks: sku.stocks
+            })),
+            
+            resumo: {
+                total_skus: skus.length,
+                tem_variacoes: product.has_variations,
+                campos_encontrados: {
+                    produto_variations: !!product.variations,
+                    produto_variations_values: !!product.variations_values,
+                    sku_variations: skus.length > 0 && !!skus[0].variations,
+                    sku_variations_values: skus.length > 0 && !!skus[0].variations_values
+                }
+            }
+        };
+        
+        res.json({
+            success: true,
+            message: `Análise completa do produto ${productId}`,
+            analysis,
+            
+            dica: 'Compare esta estrutura com o que estamos enviando. Os campos que aparecem aqui mas não no nosso código são provavelmente o problema!'
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
+
+// Buscar produtos com variações para análise
+app.get('/find-products-with-variations', async (req, res) => {
+    try {
+        console.log('🔎 Buscando produtos com variações...');
+        
+        const response = await axios.get(
+            `${config.YAMPI_API}/catalog/products`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                params: {
+                    has_variations: true,
+                    limit: 10
+                }
+            }
+        );
+        
+        const products = response.data.data;
+        
+        const productList = products.map(p => ({
+            id: p.id,
+            name: p.name,
+            has_variations: p.has_variations,
+            url_analise: `/analyze-product/${p.id}`,
+            
+            // Campos de variação no produto
+            tem_campo_variations: !!p.variations,
+            tem_campo_variations_values: !!p.variations_values
+        }));
+        
+        res.json({
+            success: true,
+            message: `Encontrados ${products.length} produtos com variações`,
+            products: productList,
+            
+            instrucoes: [
+                '1. Escolha um produto da lista acima',
+                '2. Acesse a URL de análise para ver a estrutura completa',
+                '3. Compare com o que nosso código está enviando',
+                '4. Identifique os campos faltantes'
+            ]
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
+
+// Comparar estruturas: produto funcional vs nosso código
+app.get('/compare-structures/:id', async (req, res) => {
+    try {
+        const productId = req.params.id;
+        
+        console.log(`🔬 Comparando estruturas com produto ${productId}...`);
+        
+        // Buscar produto existente
+        const existingProduct = await axios.get(
+            `${config.YAMPI_API}/catalog/products/${productId}`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        // O que nosso código envia
+        const nossoFormato = {
+            produto: {
+                has_variations: true,
+                simple: false,
+                // NÃO estamos enviando 'variations' no produto
+            },
+            sku: {
+                variations: [
+                    {
+                        variation_id: 1190509,
+                        value_id: 18183531
+                    }
+                ]
+            }
+        };
+        
+        // O que a Yampi tem
+        const formatoYampi = {
+            produto: {
+                has_variations: existingProduct.data.data.has_variations,
+                simple: existingProduct.data.data.simple,
+                variations: existingProduct.data.data.variations,
+                variations_values: existingProduct.data.data.variations_values
+            }
+        };
+        
+        // Identificar diferenças
+        const diferencas = [];
+        
+        if (formatoYampi.produto.variations && !nossoFormato.produto.variations) {
+            diferencas.push('❌ FALTANDO: Campo "variations" no produto');
+        }
+        
+        if (formatoYampi.produto.variations_values && !nossoFormato.produto.variations_values) {
+            diferencas.push('❌ FALTANDO: Campo "variations_values" no produto');
+        }
+        
+        res.json({
+            success: true,
+            comparacao: {
+                nosso_formato: nossoFormato,
+                formato_yampi: formatoYampi,
+                diferencas,
+                
+                solucao_provavel: diferencas.length > 0 ? 
+                    '🔧 SOLUÇÃO: Adicionar os campos faltantes na criação do produto!' :
+                    '✅ Estruturas parecem compatíveis'
+            }
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data
+        });
+    }
+});
+
+// Teste criar produto copiando estrutura exata
+app.get('/test-exact-copy/:id', async (req, res) => {
+    try {
+        const templateId = req.params.id;
+        
+        console.log(`📋 Copiando estrutura exata do produto ${templateId}...`);
+        
+        // Buscar produto template
+        const templateResponse = await axios.get(
+            `${config.YAMPI_API}/catalog/products/${templateId}`,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        const template = templateResponse.data.data;
+        
+        // Criar produto copiando campos de variação
+        const novoProduto = {
+            sku: `TESTE${Date.now()}`,
+            name: `Teste Cópia Exata ${Date.now()}`,
+            brand_id: template.brand_id,
+            
+            // COPIAR ESTRUTURA DE VARIAÇÕES
+            has_variations: template.has_variations,
+            simple: template.simple,
+            variations: template.variations, // CAMPO CRÍTICO!
+            variations_values: template.variations_values, // CAMPO CRÍTICO!
+            
+            // Preços
+            price: '99.90',
+            price_sale: '99.90',
+            price_discount: '89.90',
+            
+            // Outros
+            active: true,
+            quantity: 0,
+            description: 'Produto teste copiando estrutura exata',
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20
+        };
+        
+        console.log('📤 Enviando produto com estrutura copiada:', JSON.stringify(novoProduto, null, 2));
+        
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            novoProduto,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        res.json({
+            success: true,
+            message: '✅ Produto criado com estrutura copiada!',
+            produto_criado: response.data.data,
+            campos_copiados: {
+                variations: novoProduto.variations,
+                variations_values: novoProduto.variations_values
+            },
+            proximo_passo: 'Verifique se as variações aparecem no painel!'
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.response?.data,
+            
+            dica: 'Se deu erro, pode ser que alguns campos sejam read-only'
+        });
+    }
+});
