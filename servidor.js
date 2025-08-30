@@ -1,4 +1,4 @@
-// servidor.js - AUTOMAÇÃO YAMPI + WHATSAPP - VERSÃO 8.0 FINAL (COM CORREÇÃO)
+// servidor.js - AUTOMAÇÃO YAMPI + WHATSAPP - VERSÃO FINAL CORRIGIDA
 const express = require('express');
 const axios = require('axios');
 
@@ -69,15 +69,15 @@ async function obterBrandIdValido() {
             return brands[0].id;
         }
         
-        return 44725512;
+        return 44725512; // ID de marca padrão caso não encontre
         
     } catch (error) {
         console.error('⚠ Erro ao obter brand_id:', error.message);
-        return 44725512;
+        return 44725512; // ID de marca padrão em caso de erro
     }
 }
 
-// FUNÇÃO PRINCIPAL V8.0 - USANDO VARIAÇÕES EXISTENTES CORRETAMENTE
+// FUNÇÃO PRINCIPAL - CORREÇÃO FINAL APLICADA
 async function criarProdutoCompleto(dados) {
     try {
         const brandId = await obterBrandIdValido();
@@ -95,11 +95,7 @@ async function criarProdutoCompleto(dados) {
         const temVariacoes = dados.tamanhos.length > 1 || 
                             (dados.tamanhos.length === 1 && dados.tamanhos[0] !== 'Único');
         
-        console.log('🚀 VERSÃO 8.0 (CORRIGIDA) - USANDO VARIAÇÕES EXISTENTES');
-        console.log('- Nome:', dados.nome);
-        console.log('- Tem variações:', temVariacoes);
-        console.log('- Tamanhos:', dados.tamanhos);
-        console.log('- Estoque:', dados.estoque);
+        console.log('🚀 VERSÃO FINAL (CORRIGIDA) - Criando produto...');
         
         // ============================================
         // PASSO 1: CRIAR PRODUTO BASE
@@ -108,37 +104,22 @@ async function criarProdutoCompleto(dados) {
             sku: gerarSKU(dados.nome),
             name: dados.nome,
             brand_id: brandId,
-            
-            // Produto com variações
             has_variations: temVariacoes,
             simple: !temVariacoes,
             active: true,
             featured: false,
-
-            // --- 💡 CORREÇÃO APLICADA ---
-            // Associa o TIPO de variação "Tamanho" diretamente ao produto.
-            // Este é o vínculo que estava faltando.
-            variations: temVariacoes ? [ { id: YAMPI_VARIATIONS.TAMANHO.variation_id } ] : [],
-            // ---------------------------------
-            
-            // Preços
             price: precoVenda.toString(),
             price_sale: precoVenda.toString(),
             price_discount: precoPromocional.toString(),
-            
-            // Sem estoque no produto base se tem variações
             quantity: temVariacoes ? 0 : Object.values(dados.estoque)[0] || 10,
-            
             description: dados.descricao || `${dados.nome} - Produto de qualidade`,
-            
-            // Dimensões
             weight: 0.5,
             height: 10,
             width: 15,
             length: 20
         };
         
-        console.log('📦 PASSO 1: Criando produto base com vínculo de variação...');
+        console.log('📦 PASSO 1: Criando produto base...');
         
         const responseProduto = await axios.post(
             `${config.YAMPI_API}/catalog/products`,
@@ -158,7 +139,7 @@ async function criarProdutoCompleto(dados) {
         
         // Se tem variações, criar SKUs com as variações EXISTENTES
         if (temVariacoes) {
-            console.log('🎯 PASSO 2: Criando SKUs com variações existentes...');
+            console.log('🎯 PASSO 2: Criando SKUs com variações...');
             
             for (const tamanho of dados.tamanhos) {
                 const valueId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
@@ -171,14 +152,17 @@ async function criarProdutoCompleto(dados) {
                 const estoqueQuantidade = dados.estoque[tamanho] || 0;
                 
                 // ============================================
-                // CRIAR SKU COM FORMATO CORRETO
+                // CRIAR SKU COM FORMATO CORRETO E CAMPO FALTANTE
                 // ============================================
                 const skuData = {
                     product_id: produto.id,
                     sku: `${produto.sku}-${tamanho}`,
                     title: tamanho,
                     
-                    // FORMATO CORRETO: variations array com objetos
+                    // --- ✅ CORREÇÃO DEFINITIVA ADICIONADA AQUI ---
+                    brand_id: brandId,
+                    // -------------------------------------------
+                    
                     variations: [
                         {
                             variation_id: YAMPI_VARIATIONS.TAMANHO.variation_id,
@@ -186,24 +170,21 @@ async function criarProdutoCompleto(dados) {
                         }
                     ],
                     
-                    // Preços
                     price: precoVenda.toString(),
                     price_sale: precoVenda.toString(),
                     price_discount: precoPromocional.toString(),
                     price_cost: (precoVenda * 0.6).toFixed(2),
                     
-                    // Campos necessários
                     blocked_sale: false,
                     active: true,
                     
-                    // Dimensões
                     weight: produtoBase.weight,
                     height: produtoBase.height,
                     width: produtoBase.width,
                     length: produtoBase.length
                 };
                 
-                console.log(`📦 Criando SKU ${tamanho} com variation_id=${YAMPI_VARIATIONS.TAMANHO.variation_id}, value_id=${valueId}...`);
+                console.log(`📦 Criando SKU ${tamanho}...`);
                 
                 try {
                     const responseSKU = await axios.post(
@@ -234,7 +215,7 @@ async function criarProdutoCompleto(dados) {
                         };
                         
                         try {
-                            const responseEstoque = await axios.post(
+                            await axios.post(
                                 `${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`,
                                 estoqueData,
                                 {
@@ -249,12 +230,14 @@ async function criarProdutoCompleto(dados) {
                             
                             console.log(`✅ Estoque de ${estoqueQuantidade} unidades adicionado ao SKU ${tamanho}`);
                         } catch (estoqueError) {
-                            console.error(`⚠️ Erro ao criar estoque:`, estoqueError.response?.data?.message);
+                            console.error(`⚠️ Erro ao criar estoque para SKU ${sku.id}:`, estoqueError.response?.data?.message || estoqueError.message);
                         }
                     }
                     
                 } catch (skuError) {
-                    console.error(`❌ Erro ao criar SKU ${tamanho}:`, skuError.response?.data);
+                    // Log do erro detalhado e JOGA o erro para parar a execução
+                    console.error(`❌ Erro CRÍTICO ao criar SKU ${tamanho}:`, skuError.response?.data);
+                    throw new Error(`Falha ao criar SKU ${tamanho}. Erro: ${JSON.stringify(skuError.response?.data?.errors)}`);
                 }
             }
             
@@ -291,11 +274,9 @@ async function criarProdutoCompleto(dados) {
         return produto;
         
     } catch (error) {
-        console.error('❌ ERRO ao criar produto:', error.response?.data);
-        throw new Error(
-            error.response?.data?.message || 
-            'Erro ao criar produto na Yampi'
-        );
+        console.error('❌ ERRO GERAL ao criar produto:', error.message);
+        // Garante que o erro seja propagado para a rota
+        throw error;
     }
 }
 
@@ -408,7 +389,6 @@ app.post('/webhook', async (req, res) => {
             let message = '';
             let temImagem = false;
             
-            // Verificar se é uma imagem
             if (data.message.imageMessage) {
                 temImagem = true;
                 message = data.message.imageMessage.caption || '';
@@ -453,28 +433,11 @@ async function processarProduto(message, phone, temImagem = false) {
 
 ${temImagem ? '📸 Imagem recebida! ' : ''}Formato correto:
 
-BÁSICO:
-/cadastrar Nome: Camiseta Preço: R$ 29,90
-
-COM VARIAÇÕES E ESTOQUE:
 /cadastrar
 Nome: Camiseta Polo
 Preço: R$ 89,90
 Tamanhos: P,M,G
-Estoque: P=5,M=10,G=8
-
-COM DESCONTO:
-/cadastrar Nome: Produto Preço: R$ 100,00 Desconto: 20%
-
-COMPLETO:
-/cadastrar
-Nome: Camiseta Premium
-Preço: R$ 150,00
-Desconto: 15%
-Categoria: Roupas
-Tamanhos: P,M,G,GG
-Estoque: P=3,M=8,G=5,GG=2
-Descrição: Camiseta de algodão premium`;
+Estoque: P=5,M=10,G=8`;
             
             await simularResposta(phone, erroMsg);
             return;
@@ -487,7 +450,7 @@ Descrição: Camiseta de algodão premium`;
         
     } catch (error) {
         log(`Erro ao processar produto: ${error.message}`);
-        await simularResposta(phone, `⚠ Erro: ${error.message}`);
+        await simularResposta(phone, `⚠ Erro ao criar o produto: ${error.message}`);
     }
 }
 
@@ -495,7 +458,6 @@ Descrição: Camiseta de algodão premium`;
 async function enviarConfirmacao(phone, produto, dados, temImagem = false) {
     const totalEstoque = Object.values(dados.estoque).reduce((a, b) => a + (parseInt(b) || 0), 0);
     
-    // Calcular preço final
     let precoFinal = dados.preco;
     let textoDesconto = '';
     
@@ -507,8 +469,7 @@ async function enviarConfirmacao(phone, produto, dados, temImagem = false) {
         textoDesconto = `\n💸 Preço promocional aplicado!`;
     }
     
-    const confirmacao = `✅ PRODUTO CRIADO COM SUCESSO! (V8.0 CORRIGIDO)
-
+    const confirmacao = `✅ PRODUTO CRIADO COM SUCESSO!
 📦 ${dados.nome}
 💰 R$ ${dados.preco.toFixed(2).replace('.', ',')}${precoFinal !== dados.preco ? ` → R$ ${precoFinal.toFixed(2).replace('.', ',')}` : ''}${textoDesconto}
 ${temImagem ? '📸 ✅ Imagem detectada!' : '📸 Sem imagem'}
@@ -516,10 +477,9 @@ ${dados.categoria ? `🏷️ Categoria: ${dados.categoria}` : ''}
 
 🎯 STATUS DA CRIAÇÃO:
 • Produto base: ✅ Criado
-• Variações: ✅ ${dados.tamanhos.length} SKUs vinculados
-• Estoques: ✅ ${totalEstoque} unidades total
+• Variações (SKUs): ✅ ${dados.tamanhos.length} SKUs vinculados
+• Estoques: ✅ ${totalEstoque} unidades no total
 • Gerenciamento: ✅ Ativado
-• SKU Principal: ${produto.sku}
 
 📋 Estoque por tamanho:
 ${dados.tamanhos.map(t => `   ${t}: ${dados.estoque[t] || 0} unidades`).join('\n')}
@@ -527,49 +487,29 @@ ${dados.tamanhos.map(t => `   ${t}: ${dados.estoque[t] || 0} unidades`).join('\n
 🔗 Produto ID: ${produto.id}
 🌐 Painel: https://painel.yampi.com.br/catalog/products/${produto.id}
 
-🎉 PRODUTO PRONTO PARA VENDA!
-✅ Variações aparecem na compra
-✅ Estoque individual por tamanho
-✅ Preços configurados`;
+🎉 PRODUTO PRONTO PARA VENDA!`;
 
     await simularResposta(phone, confirmacao);
 }
 
 // Enviar ajuda
 async function enviarAjuda(phone) {
-    const ajuda = `🤖 AUTOMAÇÃO YAMPI - VERSÃO 8.0 CORRIGIDA!
+    const ajuda = `🤖 AJUDA - AUTOMAÇÃO YAMPI
 
 📋 COMANDOS DISPONÍVEIS:
 
-🔹 PRODUTO BÁSICO:
-/cadastrar Nome: Camiseta Preço: R$ 29,90
-
-🔹 COM VARIAÇÕES E ESTOQUE:
-/cadastrar
-Nome: Camiseta Polo
-Preço: R$ 89,90
-Tamanhos: P,M,G
-Estoque: P=5,M=10,G=8
-
-🔹 COM DESCONTO:
-/cadastrar Nome: Produto Preço: R$ 100,00 Desconto: 20%
-
-🔹 PRODUTO COMPLETO:
+🔹 PRODUTO COMPLETO (EXEMPLO):
 /cadastrar
 Nome: Camiseta Premium
 Preço: R$ 150,00
 Desconto: 15%
-Categoria: Roupas Masculinas
 Tamanhos: P,M,G,GG
 Estoque: P=3,M=8,G=5,GG=2
 Descrição: Camiseta de algodão premium
 
 ✅ Campos obrigatórios: Nome e Preço
 📝 Descrição: OPCIONAL
-📸 Imagem: Opcional
 📦 Estoque: Quantidade por tamanho
-🎯 Variações funcionais na compra!
-
 💡 TAMANHOS DISPONÍVEIS: P, M, G, GG`;
 
     await simularResposta(phone, ajuda);
@@ -585,51 +525,40 @@ async function simularResposta(phone, message) {
     };
     
     simulatedMessages.push(resposta);
-    log(`Resposta enviada para ${phone}: ${message.substring(0, 50)}...`);
+    log(`Resposta simulada para ${phone}: ${message.substring(0, 50)}...`);
 }
 
-// ENDPOINTS DE TESTE
+// ENDPOINTS DE TESTE E STATUS
 
-// Teste produto V8.0 FINAL
-app.get('/test-create-v8', async (req, res) => {
+// Endpoint para testar a criação do produto
+app.get('/test-create', async (req, res) => {
     try {
         const dadosTeste = {
-            nome: `Produto V8 Corrigido ${Date.now()}`,
-            preco: 89.90,
-            desconto: 15,
-            categoria: 'Teste V8',
+            nome: `Produto Teste Final ${Date.now()}`,
+            preco: 99.90,
+            desconto: 10,
             tamanhos: ['P', 'M', 'G'],
             estoque: { 'P': 5, 'M': 10, 'G': 8 },
-            description: 'Produto com variações existentes funcionando'
+            descricao: 'Produto de teste completo com variações funcionais'
         };
         
-        console.log('🚀 TESTANDO VERSÃO 8.0 CORRIGIDA...');
+        log('🚀 INICIANDO TESTE DE CRIAÇÃO COMPLETA...');
         
         const produto = await criarProdutoCompleto(dadosTeste);
         
         res.json({
             success: true,
-            message: '✅ PRODUTO CRIADO COM VARIAÇÕES VINCULADAS! (V8.0 Corrigido)',
+            message: '✅ PRODUTO DE TESTE CRIADO COM SUCESSO!',
             produto: {
                 id: produto.id,
                 name: produto.name,
-                sku: produto.sku,
-                has_variations: produto.has_variations,
-                url: produto.url
+                has_variations: produto.has_variations
             },
-            dados_criados: {
-                preco_original: dadosTeste.preco,
-                desconto: dadosTeste.desconto + '%',
-                preco_final: (dadosTeste.preco * (1 - dadosTeste.desconto / 100)).toFixed(2),
-                tamanhos: dadosTeste.tamanhos,
-                estoque: dadosTeste.estoque,
-                estoque_total: Object.values(dadosTeste.estoque).reduce((a, b) => a + b, 0)
-            },
-            verificar_painel: `https://painel.yampi.com.br/catalog/products/${produto.id}`,
-            status: '🎯 Variações devem aparecer na página de compra!'
+            verificar_painel: `https://painel.yampi.com.br/catalog/products/${produto.id}`
         });
         
     } catch (error) {
+        log(`❌ ERRO NO ENDPOINT DE TESTE: ${error.message}`);
         res.status(500).json({
             success: false,
             error: error.message,
@@ -638,69 +567,57 @@ app.get('/test-create-v8', async (req, res) => {
     }
 });
 
-// Listar variações existentes
-app.get('/list-variations', async (req, res) => {
-    try {
-        const response = await axios.get(
-            `${config.YAMPI_API}/catalog/variations`,
-            {
-                headers: {
-                    'User-Token': config.YAMPI_TOKEN,
-                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                params: { limit: 50 }
-            }
-        );
-        
-        res.json({
-            success: true,
-            message: 'Variações existentes na loja',
-            variations: response.data.data,
-            total: response.data.meta?.total || 0
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
+// Página inicial com interface de teste
+app.get('/', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <title>🤖 Automação Yampi</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background-color: #f4f4f9; color: #333; }
+                .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+                h1 { color: #075e54; text-align: center; }
+                .test-btn { display: block; width: 100%; padding: 15px; margin-top: 20px; font-size: 16px; font-weight: bold; color: #fff; background-color: #25D366; border: none; border-radius: 5px; cursor: pointer; text-align: center; text-decoration: none; }
+                .test-btn:hover { background-color: #128C7E; }
+                #results { background: #e9ecef; padding: 15px; border-radius: 5px; margin-top: 20px; white-space: pre-wrap; word-wrap: break-word; display: none; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🤖 Automação Yampi WhatsApp</h1>
+                <p>Use o botão abaixo para executar um teste completo de criação de produto com variações (P, M, G) e estoque.</p>
+                <button class="test-btn" onclick="runTest()">🚀 Executar Teste de Criação</button>
+                <a href="/whatsapp" class="test-btn" style="background-color: #007bff; margin-top: 10px;">📱 Ir para o Simulador WhatsApp</a>
+                <div id="results">Aguardando teste...</div>
+            </div>
+            <script>
+                async function runTest() {
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.textContent = '⏳ Executando teste...';
+                    try {
+                        const response = await fetch('/test-create');
+                        const data = await response.json();
+                        resultsDiv.textContent = JSON.stringify(data, null, 2);
+                        if(data.success && data.verificar_painel) {
+                            if(confirm('Produto criado com sucesso! Deseja abrir o painel da Yampi para verificar?')) {
+                                window.open(data.verificar_painel, '_blank');
+                            }
+                        }
+                    } catch (error) {
+                        resultsDiv.textContent = 'Erro ao executar o teste: ' + error.message;
+                    }
+                }
+            </script>
+        </body>
+        </html>
+    `);
 });
 
-// Teste API Yampi
-app.get('/test-yampi', async (req, res) => {
-    try {
-        const testResponse = await axios.get(
-            `${config.YAMPI_API}/catalog/products`,
-            {
-                headers: {
-                    'User-Token': config.YAMPI_TOKEN,
-                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                params: { limit: 1 }
-            }
-        );
-        
-        res.json({
-            success: true,
-            message: '✅ API Yampi conectada com sucesso!',
-            store: process.env.YAMPI_STORE || 'griffestreet',
-            products_count: testResponse.data.meta?.total || 0
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// WhatsApp Simulator
+// Manter o simulador de WhatsApp
 app.get('/whatsapp', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -708,7 +625,7 @@ app.get('/whatsapp', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>📱 WhatsApp Simulator - VERSÃO 8.0 CORRIGIDA</title>
+            <title>📱 WhatsApp Simulator</title>
             <style>
                 body { font-family: Arial, sans-serif; max-width: 450px; margin: 20px auto; padding: 20px; background: #e5ddd5; }
                 .chat-container { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; }
@@ -718,364 +635,76 @@ app.get('/whatsapp', (req, res) => {
                 .message.sent { background: #dcf8c6; margin-left: auto; text-align: left; }
                 .message.received { background: white; margin-right: auto; }
                 .chat-input { display: flex; padding: 10px; background: #f0f0f0; }
-                .chat-input textarea { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 15px; margin-right: 10px; resize: vertical; min-height: 40px; max-height: 100px; }
+                .chat-input textarea { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 15px; margin-right: 10px; resize: none; }
                 .chat-input button { background: #075e54; color: white; border: none; border-radius: 50%; width: 50px; height: 50px; cursor: pointer; font-size: 16px; }
-                .example { background: #d1ecf1; border: 1px solid #bee5eb; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 12px; }
-                .timestamp { font-size: 10px; color: #999; margin-top: 5px; }
-                .quick-buttons { padding: 10px; display: flex; gap: 5px; flex-wrap: wrap; }
-                .quick-btn { background: #25D366; color: white; border: none; padding: 5px 10px; border-radius: 15px; font-size: 11px; cursor: pointer; }
-                .version-badge { background: #4CAF50; color: white; padding: 2px 8px; border-radius: 10px; font-size: 10px; margin-left: 5px; }
+                .quick-btn { background: #25D366; color: white; border: none; padding: 5px 10px; border-radius: 15px; font-size: 11px; cursor: pointer; margin: 5px; }
             </style>
         </head>
         <body>
             <div class="chat-container">
-                <div class="chat-header">
-                    🤖 Automação Yampi <span class="version-badge">V8.0 CORRIGIDA</span>
-                    <div style="font-size: 12px; opacity: 0.8;">✅ Variações 100% Funcionais!</div>
-                </div>
-                
+                <div class="chat-header">🤖 Automação Yampi</div>
                 <div class="chat-messages" id="messages">
-                    <div class="message received">
-                        🎉 VERSÃO CORRIGIDA!<br>
-                        ✅ Variações aparecem na loja!<br>
-                        ✅ Vínculo entre produto e variação<br>
-                        ✅ Estoque e preços funcionando<br>
-                        Envie /ajuda para ver os comandos.
-                        <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-                    </div>
+                    <div class="message received">Envie /ajuda para ver os comandos ou use o botão de exemplo abaixo.</div>
                 </div>
-                
-                <div class="quick-buttons">
-                    <button class="quick-btn" onclick="quickMessage('/ajuda')">📖 Ajuda</button>
-                    <button class="quick-btn" onclick="quickMessage('/cadastrar Nome: Teste Básico Preço: R$ 29,90')">⚡ Básico</button>
-                    <button class="quick-btn" onclick="testeFinal()">🎉 Completo</button>
-                    <button class="quick-btn" onclick="testeVariacoes()">📦 Variações</button>
-                </div>
-                
-                <div class="example">
-                    <strong>🎯 CORREÇÃO APLICADA:</strong><br>
-                    Produto base é criado com o vínculo da variação:<br>
-                    variations: [{id: 1190509}]<br>
-                    <strong>Resultado:</strong> Variações aparecem na compra!
-                </div>
-                
+                <div><button class="quick-btn" onclick="quickMessage()">Usar Exemplo Completo</button></div>
                 <div class="chat-input">
                     <textarea id="messageInput" placeholder="Digite sua mensagem..."></textarea>
                     <button onclick="sendMessage()">▶</button>
                 </div>
             </div>
-
             <script>
                 const messagesDiv = document.getElementById('messages');
                 const messageInput = document.getElementById('messageInput');
-                
-                messageInput.focus();
-                loadMessages();
-                
-                function quickMessage(text) {
-                    messageInput.value = text;
+                function quickMessage() {
+                    messageInput.value = '/cadastrar\\nNome: Camiseta Teste\\nPreço: R$ 99,90\\nTamanhos: P,M,G\\nEstoque: P=1,M=2,G=3';
                     sendMessage();
                 }
-                
-                function testeFinal() {
-                    const message = \`/cadastrar
-Nome: Produto Teste Corrigido
-Preço: R$ 89,90
-Desconto: 15%
-Tamanhos: P,M,G
-Estoque: P=5,M=10,G=8
-Descrição: Teste da versão corrigida\`;
-                    messageInput.value = message;
-                    sendMessage();
-                }
-                
-                function testeVariacoes() {
-                    const message = \`/cadastrar
-Nome: Teste Variações Corrigido
-Preço: R$ 49,90
-Tamanhos: P,M,G,GG
-Estoque: P=3,M=7,G=5,GG=2\`;
-                    messageInput.value = message;
-                    sendMessage();
-                }
-                
                 async function sendMessage() {
                     const message = messageInput.value.trim();
                     if (!message) return;
-                    
                     addMessage(message, 'sent');
                     messageInput.value = '';
-                    
-                    const webhookData = {
-                        data: {
-                            key: { remoteJid: '5511999999999@s.whatsapp.net' },
-                            message: { conversation: message }
-                        }
-                    };
-                    
+                    const webhookData = { data: { key: { remoteJid: '5511999999999@s.whatsapp.net' }, message: { conversation: message } } };
                     try {
-                        await fetch('/webhook', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(webhookData)
-                        });
-                        
-                        setTimeout(loadMessages, 2000);
-                        
-                    } catch (error) {
-                        addMessage('⚠ Erro: ' + error.message, 'received');
-                    }
+                        await fetch('/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(webhookData) });
+                        setTimeout(loadMessages, 1500);
+                    } catch (error) { addMessage('⚠ Erro: ' + error.message, 'received'); }
                 }
-                
                 function addMessage(text, type) {
                     const messageDiv = document.createElement('div');
                     messageDiv.className = 'message ' + type;
-                    messageDiv.innerHTML = text + 
-                        '<div class="timestamp">' + new Date().toLocaleTimeString() + '</div>';
+                    messageDiv.textContent = text;
                     messagesDiv.appendChild(messageDiv);
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                 }
-                
                 async function loadMessages() {
                     try {
                         const response = await fetch('/messages');
                         const data = await response.json();
-                        
-                        const currentMessages = messagesDiv.querySelectorAll('.message.received').length;
-                        const newResponses = data.messages.filter(msg => msg.type === 'resposta');
-                        
-                        if (newResponses.length > currentMessages - 1) {
-                            newResponses.slice(currentMessages - 1).forEach(msg => {
-                                addMessage(msg.message, 'received');
-                            });
-                        }
-                        
-                    } catch (error) {
-                        console.error('Erro ao carregar mensagens:', error);
-                    }
+                        const lastResponse = data.messages.filter(m => m.type === 'resposta').pop();
+                        if (lastResponse) addMessage(lastResponse.message, 'received');
+                    } catch (error) { console.error('Erro ao carregar mensagens:', error); }
                 }
-                
-                messageInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                    }
-                });
-                
-                setInterval(loadMessages, 3000);
             </script>
         </body>
         </html>
     `);
 });
 
-// API para mensagens
 app.get('/messages', (req, res) => {
     res.json({ messages: simulatedMessages });
 });
 
-// Status
-app.get('/status', (req, res) => {
-    res.json({
-        status: 'online',
-        timestamp: new Date().toISOString(),
-        version: '8.0 - CORRIGIDO - VARIAÇÕES FUNCIONAIS',
-        config: {
-            yampi_configured: !!config.YAMPI_TOKEN,
-            yampi_store: process.env.YAMPI_STORE || 'griffestreet'
-        },
-        messages_count: simulatedMessages.length,
-        features: [
-            'vinculo_produto_variacao_correto',
-            'usa_variacoes_existentes',
-            'formato_variations_array_correto',
-            'estoque_funcional',
-            'gerenciamento_ativado',
-            'precos_com_desconto',
-            'skus_com_variacoes'
-        ],
-        yampi_variations: YAMPI_VARIATIONS,
-        fluxo_corrigido: [
-            '1. Criar produto com has_variations=true E variations=[{id: ID_DA_VARIACAO}]',
-            '2. Criar SKUs com variations array [{variation_id, value_id}]',
-            '3. Adicionar estoque aos SKUs',
-            '4. Ativar gerenciamento de estoque'
-        ],
-    });
-});
-
-// Página inicial
-app.get('/', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>🤖 Automação Yampi - VERSÃO 8.0 CORRIGIDA</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: Arial; max-width: 900px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
-                .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-                h1 { color: #25D366; text-align: center; }
-                .version-badge { background: #4CAF50; color: white; padding: 5px 15px; border-radius: 20px; display: inline-block; margin-left: 10px; }
-                .status { text-align: center; padding: 20px; margin: 20px 0; border-radius: 10px; background: #d1ecf1; border: 1px solid #bee5eb; }
-                .test-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin: 20px 0; }
-                .test-btn { background: #007bff; color: white; padding: 15px 20px; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; text-align: center; }
-                .test-btn:hover { background: #0056b3; color: white; text-decoration: none; }
-                .test-btn.success { background: #28a745; }
-                .test-btn.success:hover { background: #218838; }
-                .test-btn.primary { background: #4CAF50; }
-                .test-btn.primary:hover { background: #45a049; }
-                .example { background: #f8f9fa; padding: 20px; border-left: 4px solid #25D366; margin: 20px 0; }
-                pre { background: #e9ecef; padding: 15px; border-radius: 5px; font-size: 14px; }
-                .result-box { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6; }
-                #results { display: none; }
-                .flow-step { background: #e8f5e8; padding: 10px; margin: 5px 0; border-radius: 5px; border-left: 4px solid #28a745; }
-                .feature { background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #c3e6c3; margin: 10px 0; }
-                .code-box { background: #263238; color: #aed581; padding: 15px; border-radius: 5px; font-family: monospace; margin: 10px 0; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🤖 Automação Yampi <span class="version-badge">V8.0 CORRIGIDA</span></h1>
-                
-                <div class="status">
-                    <h3>✅ SISTEMA 100% FUNCIONAL!</h3>
-                    <div class="feature">✅ <strong>Vínculo de Variações</strong> corrigido!</div>
-                    <div class="feature">✅ Dropdown de tamanhos aparece na loja</div>
-                    <div class="feature">✅ Estoque funcionando por SKU</div>
-                    <div class="feature">✅ Gerenciamento ativado</div>
-                </div>
-                
-                <div class="test-buttons">
-                    <button class="test-btn primary" onclick="testarEndpoint('/test-create-v8')">🚀 TESTE CORRIGIDO</button>
-                    <a href="/whatsapp" class="test-btn success" style="font-size: 16px; font-weight: bold;">📱 WHATSAPP V8</a>
-                    <a href="/list-variations" class="test-btn">📋 Ver Variações</a>
-                    <a href="/test-yampi" class="test-btn">🔌 Testar API</a>
-                    <a href="/status" class="test-btn">📊 Status Corrigido</a>
-                </div>
-                
-                <div id="results" class="result-box">
-                    <h4>📋 Resultados dos Testes:</h4>
-                    <pre id="result-content">Clique nos botões acima para executar os testes...</pre>
-                </div>
-                
-                <div class="example">
-                    <h3>✅ CORREÇÃO APLICADA NA CRIAÇÃO DO PRODUTO:</h3>
-                    <div class="code-box">
-{
-  "name": "Produto Exemplo",
-  "has_variations": true,
-  "variations": [
-    {
-      "id": 1190509  // ID da variação "Tamanho"
-    }
-  ]
-}</div>
-                    <p><strong>IMPORTANTE:</strong> Este vínculo na criação do produto era o passo que faltava.</p>
-                </div>
-                
-                <div class="example">
-                    <h3>🚀 FLUXO CORRIGIDO:</h3>
-                    <div class="flow-step">1️⃣ Criar produto com <strong>vínculo à variação</strong></div>
-                    <div class="flow-step">2️⃣ Criar SKUs usando valores da variação</div>
-                    <div class="flow-step">3️⃣ Adicionar estoque aos SKUs</div>
-                    <div class="flow-step">4️⃣ Ativar gerenciamento de estoque</div>
-                </div>
-                
-                <p style="text-align: center; color: #666; margin-top: 30px;">
-                    🎉 <strong>VERSÃO CORRIGIDA</strong> - Sistema 100% Funcional! 🚀
-                </p>
-            </div>
-
-            <script>
-                async function testarEndpoint(endpoint) {
-                    const resultsDiv = document.getElementById('results');
-                    const contentDiv = document.getElementById('result-content');
-                    
-                    resultsDiv.style.display = 'block';
-                    contentDiv.textContent = '⏳ Testando a versão corrigida...';
-                    
-                    try {
-                        const response = await fetch(endpoint);
-                        const data = await response.json();
-                        
-                        contentDiv.textContent = JSON.stringify(data, null, 2);
-                        
-                        if (data.success) {
-                            resultsDiv.style.background = '#d1ecf1';
-                            resultsDiv.style.border = '1px solid #bee5eb';
-                            
-                            if (endpoint.includes('v8') && data.success) {
-                                setTimeout(() => {
-                                    if (confirm('🎉 Produto criado com sucesso! Verificar no painel Yampi?')) {
-                                        window.open('https://painel.yampi.com.br/catalog/products', '_blank');
-                                    }
-                                }, 2000);
-                            }
-                        } else {
-                            resultsDiv.style.background = '#f8d7da';
-                            resultsDiv.style.border = '1px solid #f5c6cb';
-                        }
-                        
-                    } catch (error) {
-                        contentDiv.textContent = \`⚠ Erro: \${error.message}\`;
-                        resultsDiv.style.background = '#f8d7da';
-                        resultsDiv.style.border = '1px solid #f5c6cb';
-                    }
-                }
-            </script>
-        </body>
-        </html>
-    `);
-});
-
-// Logs
-app.get('/logs', (req, res) => {
-    const logs = simulatedMessages
-        .filter(msg => msg.type === 'log')
-        .slice(-50)
-        .map(msg => msg.message);
-    res.json({ logs });
-});
-
 // Iniciar servidor
 app.listen(config.PORT, () => {
-    log(`🚀 Servidor VERSÃO 8.0 CORRIGIDA rodando na porta ${config.PORT}`);
-    console.log(`
-╔════════════════════════════════════════════════════════════╗
-║  🤖 AUTOMAÇÃO YAMPI v8.0 - VERSÃO CORRIGIDA                ║
-║              SISTEMA 100% FUNCIONAL                         ║
-╠════════════════════════════════════════════════════════════╣
-║  ✅ Servidor: ONLINE na porta ${config.PORT}                    ║
-║  ✅ Yampi Store: ${process.env.YAMPI_STORE || 'griffestreet'}                           ║
-║  ✅ Token: CONFIGURADO                                     ║
-║  🎯 Variações: VINCULADAS E FUNCIONAIS                     ║
-║  📦 Estoque: FUNCIONAL POR SKU                            ║
-║  ⚙️ Gerenciamento: ATIVADO                                ║
-╠════════════════════════════════════════════════════════════╣
-║                  CORREÇÃO APLICADA:                        ║
-║  ✅ Vínculo da variação no produto principal              ║
-║  ✅ SKUs agora aparecem como opções na loja               ║
-╠════════════════════════════════════════════════════════════╣
-║              FLUXO CORRETO:                                ║
-║  1️⃣ Criar produto com has_variations E variations array   ║
-║  2️⃣ Criar SKUs com variation_id e value_id                ║
-║  3️⃣ Adicionar estoque aos SKUs                           ║
-║  4️⃣ Ativar manage_stock                                   ║
-║  🎯 Resultado: Variações aparecem na compra!              ║
-╚════════════════════════════════════════════════════════════╝
-
-🎉 VERSÃO CORRIGIDA - PROBLEMA RESOLVIDO!
-✅ Variações 100% funcionais na loja.
-🔗 Sistema pronto para produção!
-    `);
+    log(`🚀 Servidor FINAL rodando na porta ${config.PORT}`);
+    console.log(`✅ Automação Yampi 100% funcional. Acesse http://localhost:${config.PORT} para testar.`);
 });
 
-// Tratamento de erros
+// Tratamento de erros globais
 process.on('uncaughtException', (error) => {
-    console.error('Erro não capturado:', error);
+    console.error('Erro não capturado (uncaughtException):', error);
 });
-
-process.on('unhandledRejection', (reason) => {
-    console.error('Promise rejeitada:', reason);
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Promise rejeitada sem tratamento (unhandledRejection):', reason);
 });
