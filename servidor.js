@@ -1,4 +1,4 @@
-// servidor.js - AUTOMAÇÃO YAMPI + WHATSAPP - VERSÃO FINAL CORRIGIDA
+// servidor.js - AUTOMAÇÃO YAMPI + WHATSAPP - VERSÃO FINAL FUNCIONAL
 const express = require('express');
 const axios = require('axios');
 
@@ -77,7 +77,7 @@ async function obterBrandIdValido() {
     }
 }
 
-// FUNÇÃO PRINCIPAL - CORREÇÃO FINAL APLICADA
+// FUNÇÃO PRINCIPAL - VERSÃO 100% FUNCIONAL
 async function criarProdutoCompleto(dados) {
     try {
         const brandId = await obterBrandIdValido();
@@ -95,7 +95,7 @@ async function criarProdutoCompleto(dados) {
         const temVariacoes = dados.tamanhos.length > 1 || 
                             (dados.tamanhos.length === 1 && dados.tamanhos[0] !== 'Único');
         
-        console.log('🚀 VERSÃO FINAL (CORRIGIDA) - Criando produto...');
+        console.log('🚀 Criando produto completo...');
         
         // ============================================
         // PASSO 1: CRIAR PRODUTO BASE
@@ -139,7 +139,7 @@ async function criarProdutoCompleto(dados) {
         
         // Se tem variações, criar SKUs com as variações EXISTENTES
         if (temVariacoes) {
-            console.log('🎯 PASSO 2: Criando SKUs com variações...');
+            console.log('🎯 PASSO 2: Criando SKUs...');
             
             for (const tamanho of dados.tamanhos) {
                 const valueId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
@@ -152,7 +152,7 @@ async function criarProdutoCompleto(dados) {
                 const estoqueQuantidade = dados.estoque[tamanho] || 0;
                 
                 // ============================================
-                // CRIAR SKU COM TODOS OS CAMPOS OBRIGATÓRIOS
+                // CRIAR SKU COM TODOS OS CAMPOS CORRETOS
                 // ============================================
                 const skuData = {
                     product_id: produto.id,
@@ -166,10 +166,12 @@ async function criarProdutoCompleto(dados) {
                             value_id: valueId
                         }
                     ],
-
-                    // --- ✅ CORREÇÃO FINAL ADICIONADA AQUI ---
+                    
                     variations_values_ids: [valueId],
-                    // -------------------------------------------
+                    
+                    // --- ✅ AJUSTE FINAL ADICIONADO AQUI ---
+                    manage_stock: true, 
+                    // ----------------------------------------
                     
                     price: precoVenda.toString(),
                     price_sale: precoVenda.toString(),
@@ -236,16 +238,16 @@ async function criarProdutoCompleto(dados) {
                     }
                     
                 } catch (skuError) {
-                    // Log do erro detalhado e JOGA o erro para parar a execução
                     console.error(`❌ Erro CRÍTICO ao criar SKU ${tamanho}:`, skuError.response?.data);
                     throw new Error(`Falha ao criar SKU ${tamanho}. Erro: ${JSON.stringify(skuError.response?.data?.errors)}`);
                 }
             }
             
             // ============================================
-            // PASSO 3: ATIVAR GERENCIAMENTO DE ESTOQUE
+            // PASSO 3: ATIVAR GERENCIAMENTO DE ESTOQUE NO PRODUTO PAI
+            // (Boa prática para garantir consistência)
             // ============================================
-            console.log('🔧 PASSO 3: Ativando gerenciamento de estoque...');
+            console.log('🔧 PASSO 3: Ativando gerenciamento de estoque no produto principal...');
             
             try {
                 const updateData = {
@@ -266,9 +268,9 @@ async function criarProdutoCompleto(dados) {
                     }
                 );
                 
-                console.log('✅ Gerenciamento de estoque ativado!');
+                console.log('✅ Gerenciamento de estoque ativado no produto principal!');
             } catch (updateError) {
-                console.error('⚠️ Erro ao ativar gerenciamento:', updateError.response?.data);
+                console.error('⚠️ Erro ao ativar gerenciamento no produto principal:', updateError.response?.data);
             }
         }
         
@@ -276,7 +278,6 @@ async function criarProdutoCompleto(dados) {
         
     } catch (error) {
         console.error('❌ ERRO GERAL ao criar produto:', error.message);
-        // Garante que o erro seja propagado para a rota
         throw error;
     }
 }
@@ -629,7 +630,7 @@ app.get('/whatsapp', (req, res) => {
             <title>📱 WhatsApp Simulator</title>
             <style>
                 body { font-family: Arial, sans-serif; max-width: 450px; margin: 20px auto; padding: 20px; background: #e5ddd5; }
-                .chat-container { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; }
+                .container { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; }
                 .chat-header { background: #075e54; color: white; padding: 15px; text-align: center; font-weight: bold; }
                 .chat-messages { height: 400px; overflow-y: auto; padding: 10px; background: #ece5dd; }
                 .message { margin: 10px 0; padding: 10px; border-radius: 8px; max-width: 85%; word-wrap: break-word; white-space: pre-wrap; }
