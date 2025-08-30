@@ -152,16 +152,13 @@ async function criarProdutoCompleto(dados) {
                 const estoqueQuantidade = dados.estoque[tamanho] || 0;
                 
                 // ============================================
-                // CRIAR SKU COM FORMATO CORRETO E CAMPO FALTANTE
+                // CRIAR SKU COM TODOS OS CAMPOS OBRIGATÓRIOS
                 // ============================================
                 const skuData = {
                     product_id: produto.id,
                     sku: `${produto.sku}-${tamanho}`,
                     title: tamanho,
-                    
-                    // --- ✅ CORREÇÃO DEFINITIVA ADICIONADA AQUI ---
                     brand_id: brandId,
-                    // -------------------------------------------
                     
                     variations: [
                         {
@@ -169,6 +166,10 @@ async function criarProdutoCompleto(dados) {
                             value_id: valueId
                         }
                     ],
+
+                    // --- ✅ CORREÇÃO FINAL ADICIONADA AQUI ---
+                    variations_values_ids: [valueId],
+                    // -------------------------------------------
                     
                     price: precoVenda.toString(),
                     price_sale: precoVenda.toString(),
