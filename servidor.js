@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO DEFINITIVA 2.1 - Correção de Campos Obrigatórios (price_cost, blocked_sale)
+// servidor.js - VERSÃO DEFINITIVA 2.2 - Correção Final para Ativação do Estoque
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -105,7 +105,7 @@ async function criarProdutoCompleto(dados) {
         if (dados.desconto) precoPromocional = precoVenda * (1 - dados.desconto / 100);
         else if (dados.precoPromocional) precoPromocional = parseFloat(dados.precoPromocional);
 
-        log('🚀 Montando payload para a API oficial da Yampi...');
+        log('🚀 Montando payload para a API oficial da Yampi com controle de estoque...');
 
         const skus = dados.tamanhos.map(tamanho => {
             const valueId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
@@ -117,12 +117,13 @@ async function criarProdutoCompleto(dados) {
                 sku: `${gerarSKU(dados.nome, 4)}-${tamanho.toUpperCase()}`,
                 quantity: dados.estoque[tamanho] || 0,
                 price_sale: precoVenda.toString(),
+                price_cost: (precoVenda * 0.6).toFixed(2),
+                blocked_sale: false,
                 
-                // --- INÍCIO DA CORREÇÃO ---
-                price_cost: (precoVenda * 0.6).toFixed(2), // Adicionando preço de custo padrão (60% do preço de venda)
-                blocked_sale: false,                      // Adicionando o campo obrigatório como 'false'
-                // --- FIM DA CORREÇÃO ---
-
+                // --- INÍCIO DA CORREÇÃO DE ESTOQUE ---
+                manage_stock: true, // ESSA LINHA ATIVA O CONTROLE DE ESTOQUE
+                // --- FIM DA CORREÇÃO DE ESTOQUE ---
+                
                 ...(precoPromocional && { price_discount: precoPromocional.toString() }),
                 active: true,
                 variations_values_ids: [valueId]
@@ -165,6 +166,7 @@ async function criarProdutoCompleto(dados) {
 }
 
 // --- ROTAS DO SERVIDOR ---
+// (O restante do código não precisa de alterações)
 
 app.post('/webhook', async (req, res) => {
     try {
