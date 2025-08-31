@@ -7,7 +7,7 @@ const app = express();
 app.use(express.json());
 
 // --- CONFIGURAÇÕES ---
-// (Se você usa um arquivo .env, estas variáveis virão de lá)
+// Lembre-se de configurar estas variáveis no painel do Railway
 const config = {
     YAMPI_API: `https://api.dooki.com.br/v2/${process.env.YAMPI_STORE || 'sua-loja'}`,
     YAMPI_TOKEN: process.env.YAMPI_TOKEN || 'SEU_TOKEN_AQUI',
@@ -16,7 +16,7 @@ const config = {
 };
 
 // --- MAPEAMENTO DE VARIAÇÕES ---
-// IDs das variações e seus valores. ESSENCIAL para a nova abordagem.
+// IDs das variações e seus valores.
 // VERIFIQUE NO PAINEL DA YAMPI SE ESSES NÚMEROS CORRESPONDEM AOS DA SUA LOJA
 const YAMPI_VARIATIONS = {
     TAMANHO: {
@@ -167,7 +167,6 @@ async function criarProdutoCompleto(dados) {
 
 // --- ROTAS DO SERVIDOR ---
 
-// Webhook para receber mensagens
 app.post('/webhook', async (req, res) => {
     try {
         const { data } = req.body;
@@ -243,7 +242,6 @@ app.get('/test-create', async (req, res) => {
 app.get('/', (req, res) => res.send(`<h1>Servidor da Automação Yampi no ar.</h1><p><a href="/test-create">Clique aqui para fazer um teste rápido.</a></p><p><a href="/whatsapp">Clique aqui para ir ao simulador de WhatsApp.</a></p>`));
 app.get('/messages', (req, res) => res.json({ messages: simulatedMessages }));
 app.get('/whatsapp', (req, res) => {
-    // Código da página do simulador
     res.send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>WhatsApp Simulator</title><style>body{font-family:sans-serif;max-width:450px;margin:20px auto;background:#e5ddd5}#chat{background:#ece5dd;height:400px;overflow-y:auto;padding:10px;border:1px solid #ccc}.msg{margin:10px 0;padding:10px;border-radius:8px;max-width:85%}.sent{background:#dcf8c6;margin-left:auto}.received{background:white}#input{display:flex;padding:10px}textarea{flex:1;padding:10px;border-radius:15px;margin-right:10px}button{background:#075e54;color:white;border:none;border-radius:50%;width:50px;height:50px;cursor:pointer}</style></head><body><div id="chat-container"><div id="chat"></div><div id="input"><textarea id="messageInput" placeholder="Digite sua mensagem..."></textarea><button onclick="sendMessage()">▶</button></div></div><script>const chat=document.getElementById('chat'),input=document.getElementById('messageInput');async function sendMessage(){const msg=input.value.trim();if(!msg)return;addMessage(msg,'sent');input.value='';const webhookData={data:{key:{remoteJid:'test-user@s.whatsapp.net'},message:{conversation:msg}}};await fetch('/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(webhookData)});setTimeout(loadMessages,1500)}function addMessage(text,type){const div=document.createElement('div');div.className='msg '+type;div.innerText=text;chat.appendChild(div);chat.scrollTop=chat.scrollHeight}async function loadMessages(){const res=await fetch('/messages');const data=await res.json();const lastResponse=data.messages.filter(m=>m.type==='resposta').pop();if(lastResponse)addMessage(lastResponse.message,'received')}</script></body></html>`);
 });
 
@@ -252,7 +250,7 @@ app.get('/whatsapp', (req, res) => {
 app.listen(config.PORT, () => {
     log(`🚀 Servidor DEFINITIVO rodando na porta ${config.PORT}`);
     log(`✅ Automação configurada para comunicação direta com a Yampi.`);
-    log(`🔗 Acesse http://localhost:${config.PORT} para a interface.`);
+    log(`🔗 Acesse http://localhost:${config.PORT} para a interface (se estiver rodando localmente).`);
 });
 
 // --- TRATAMENTO DE ERROS GLOBAIS ---
