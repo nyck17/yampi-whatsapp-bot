@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO DEFINITIVA 3.3 - Estratégia de Três Passos (Criar -> Habilitar no Pai -> Adicionar Estoque)
+// servidor.js - VERSÃO DEFINITIVA 3.4 - Adicionando Pausa Estratégica de 3s
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -138,7 +138,7 @@ async function criarProdutoCompleto(dados) {
         throw new Error("Falha ao criar o produto base.");
     }
     
-    // --- PASSO 2 (NOVO): Ativar o Gerenciamento de Estoque no Produto Pai ---
+    // --- PASSO 2: Ativar o Gerenciamento de Estoque no Produto Pai ---
     log('🚀 PASSO 2: Ativando o gerenciamento de estoque no produto pai...');
     const updatePayload = {
         manage_stock: true,
@@ -151,6 +151,12 @@ async function criarProdutoCompleto(dados) {
         log(`❌ ERRO no PASSO 2: ${JSON.stringify(error.response?.data)}`);
         throw new Error("Falha ao ativar o gerenciamento de estoque no produto pai.");
     }
+
+    // --- INÍCIO DA MUDANÇA: PAUSA ESTRATÉGICA ---
+    log('⏸️ Aguardando 3 segundos para a Yampi processar a ativação do estoque...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    log('✅ Pausa finalizada. Continuando para o Passo 3.');
+    // --- FIM DA MUDANÇA ---
 
     // --- PASSO 3: Adicionar Estoque para Cada SKU Criado ---
     log('🚀 PASSO 3: Adicionando estoque para cada variação...');
@@ -178,7 +184,9 @@ async function criarProdutoCompleto(dados) {
     return produtoCriado;
 }
 
-// --- ROTAS DO SERVIDOR ---
+// --- ROTAS DO SERVIDOR (sem alterações) ---
+// (O restante do código é idêntico à versão anterior)
+
 app.post('/webhook', async (req, res) => {
     try {
         const { data } = req.body;
@@ -236,7 +244,7 @@ app.get('/test-create', async (req, res) => {
             tamanhos: ['P', 'M', 'G', 'GG'], estoque: { 'P': 2, 'M': 5, 'G': 6, 'GG': 3 },
             descricao: 'Produto de teste completo criado diretamente na Yampi'
         };
-        log('🚀 INICIANDO TESTE (Estratégia de 3 Passos)...');
+        log('🚀 INICIANDO TESTE (Estratégia de 3 Passos com Pausa)...');
         const produto = await criarProdutoCompleto(dadosTeste);
         res.json({
             success: true, message: '✅ PRODUTO DE TESTE CRIADO DIRETAMENTE NA YAMPI!',
