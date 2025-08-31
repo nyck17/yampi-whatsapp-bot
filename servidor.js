@@ -1,13 +1,12 @@
-// servidor.js - VERSÃO DEFINITIVA - Alinhado com a Documentação Oficial da Yampi
+// servidor.js - VERSÃO DEFINITIVA 2.1 - Correção de Campos Obrigatórios (price_cost, blocked_sale)
 const express = require('express');
 const axios = require('axios');
-const fs = require('fs'); // Módulo para manipulação de arquivos
+const fs = require('fs');
 
 const app = express();
 app.use(express.json());
 
 // --- CONFIGURAÇÕES ---
-// Lembre-se de configurar estas variáveis no painel do Railway
 const config = {
     YAMPI_API: `https://api.dooki.com.br/v2/${process.env.YAMPI_STORE || 'sua-loja'}`,
     YAMPI_TOKEN: process.env.YAMPI_TOKEN || 'SEU_TOKEN_AQUI',
@@ -16,8 +15,6 @@ const config = {
 };
 
 // --- MAPEAMENTO DE VARIAÇÕES ---
-// IDs das variações e seus valores.
-// VERIFIQUE NO PAINEL DA YAMPI SE ESSES NÚMEROS CORRESPONDEM AOS DA SUA LOJA
 const YAMPI_VARIATIONS = {
     TAMANHO: {
         variation_id: 1190509,
@@ -35,7 +32,6 @@ let simulatedMessages = [];
 
 // --- FUNÇÕES AUXILIARES ---
 
-// Logs simples no console e para o simulador
 function log(message) {
     const timestamp = new Date().toLocaleString('pt-BR');
     const logMessage = `[${timestamp}] ${message}`;
@@ -44,7 +40,6 @@ function log(message) {
     if (simulatedMessages.length > 100) simulatedMessages.shift();
 }
 
-// Busca o ID da primeira marca cadastrada na loja
 async function obterBrandIdValido() {
     try {
         const response = await axios.get(`${config.YAMPI_API}/catalog/brands`, {
@@ -63,14 +58,12 @@ async function obterBrandIdValido() {
     }
 }
 
-// Gera um SKU único baseado no nome e no tempo
 function gerarSKU(nome, length = 6) {
     const timestamp = Date.now().toString().slice(-length);
     const nomeClean = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 8);
     return `${nomeClean}${timestamp}`;
 }
 
-// Extrai as informações da mensagem do WhatsApp
 function extrairDados(message) {
     const dados = { nome: '', preco: 0, desconto: null, precoPromocional: null, tamanhos: ['Único'], estoque: { 'Único': 10 }, descricao: '' };
     const texto = message.toLowerCase();
@@ -124,6 +117,12 @@ async function criarProdutoCompleto(dados) {
                 sku: `${gerarSKU(dados.nome, 4)}-${tamanho.toUpperCase()}`,
                 quantity: dados.estoque[tamanho] || 0,
                 price_sale: precoVenda.toString(),
+                
+                // --- INÍCIO DA CORREÇÃO ---
+                price_cost: (precoVenda * 0.6).toFixed(2), // Adicionando preço de custo padrão (60% do preço de venda)
+                blocked_sale: false,                      // Adicionando o campo obrigatório como 'false'
+                // --- FIM DA CORREÇÃO ---
+
                 ...(precoPromocional && { price_discount: precoPromocional.toString() }),
                 active: true,
                 variations_values_ids: [valueId]
