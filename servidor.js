@@ -710,3 +710,235 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Promise rejeitada sem tratamento (unhandledRejection):', reason);
 });
+
+// ADICIONE ESTE CÓDIGO NO SEU servidor.js PARA TESTAR
+
+// Teste importação estilo Automágico
+app.get('/test-import-automagico', async (req, res) => {
+    try {
+        console.log('🚀 Testando importação estilo Automágico...');
+        
+        // Estrutura similar ao Automágico
+        const importData = {
+            products: [
+                {
+                    name: `Teste Import ${Date.now()}`,
+                    sku: `IMP${Date.now()}`,
+                    price: 89.90,
+                    promotional_price: 76.42,
+                    description: "Produto teste com variações",
+                    weight: 0.5,
+                    height: 10,
+                    width: 15,
+                    length: 20,
+                    stock: 0, // Estoque será nas variantes
+                    is_active: true,
+                    
+                    // CAMPOS CHAVE DO AUTOMÁGICO
+                    attributes: ["Tamanho"],
+                    variants_combination: [
+                        {
+                            values: ["P"],
+                            sku: `IMP${Date.now()}-P`,
+                            stock: 5
+                        },
+                        {
+                            values: ["M"],
+                            sku: `IMP${Date.now()}-M`,
+                            stock: 10
+                        },
+                        {
+                            values: ["G"],
+                            sku: `IMP${Date.now()}-G`,
+                            stock: 8
+                        }
+                    ]
+                }
+            ]
+        };
+        
+        console.log('📤 Tentando importação:', JSON.stringify(importData, null, 2));
+        
+        // Tentar endpoint de importação
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/imports`,
+            importData,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        res.json({
+            success: true,
+            message: '✅ Importação realizada!',
+            data: response.data,
+            estrutura_enviada: importData
+        });
+        
+    } catch (error) {
+        // Se falhar, tentar outro formato
+        console.error('❌ Erro na importação:', error.response?.data);
+        
+        // Tentar formato alternativo
+        await testarFormatoAlternativo(res);
+    }
+});
+
+// Formato alternativo - criar produto com variações inline
+async function testarFormatoAlternativo(res) {
+    try {
+        console.log('🔄 Tentando formato alternativo...');
+        
+        const produtoCompleto = {
+            sku: `ALT${Date.now()}`,
+            name: `Teste Alternativo ${Date.now()}`,
+            brand_id: 44725512,
+            has_variations: true,
+            simple: false,
+            active: true,
+            
+            // Preços
+            price: "89.90",
+            price_sale: "89.90",
+            price_discount: "76.42",
+            
+            // Dimensões
+            weight: 0.5,
+            height: 10,
+            width: 15,
+            length: 20,
+            
+            // TENTATIVA: Incluir variações diretamente
+            variations: [
+                {
+                    name: "Tamanho",
+                    values: ["P", "M", "G"]
+                }
+            ],
+            
+            // TENTATIVA: Incluir SKUs inline
+            skus: [
+                {
+                    sku: `ALT${Date.now()}-P`,
+                    title: "P",
+                    price: "89.90",
+                    stock: 5,
+                    variations: [{
+                        variation_id: 1190509,
+                        value_id: 18183531
+                    }]
+                },
+                {
+                    sku: `ALT${Date.now()}-M`,
+                    title: "M",
+                    price: "89.90",
+                    stock: 10,
+                    variations: [{
+                        variation_id: 1190509,
+                        value_id: 18183532
+                    }]
+                },
+                {
+                    sku: `ALT${Date.now()}-G`,
+                    title: "G",
+                    price: "89.90",
+                    stock: 8,
+                    variations: [{
+                        variation_id: 1190509,
+                        value_id: 18183533
+                    }]
+                }
+            ]
+        };
+        
+        const response = await axios.post(
+            `${config.YAMPI_API}/catalog/products`,
+            produtoCompleto,
+            {
+                headers: {
+                    'User-Token': config.YAMPI_TOKEN,
+                    'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+        
+        res.json({
+            success: true,
+            message: '✅ Formato alternativo funcionou!',
+            data: response.data
+        });
+        
+    } catch (altError) {
+        res.status(500).json({
+            success: false,
+            tentativa1: 'Importação estilo Automágico falhou',
+            tentativa2: 'Formato alternativo falhou',
+            erro1: altError.response?.data,
+            
+            descoberta: 'O Automágico provavelmente usa um endpoint especial ou API privada',
+            
+            proximos_passos: [
+                '1. Verificar se existe endpoint /catalog/products/batch',
+                '2. Verificar se existe endpoint /catalog/products/import',
+                '3. Capturar tráfego real do painel Yampi'
+            ]
+        });
+    }
+}
+
+// Buscar endpoints disponíveis
+app.get('/discover-endpoints', async (req, res) => {
+    const endpointsToTest = [
+        '/catalog/imports',
+        '/catalog/products/batch',
+        '/catalog/products/import',
+        '/catalog/products/bulk',
+        '/imports',
+        '/batch',
+        '/bulk'
+    ];
+    
+    const results = [];
+    
+    for (const endpoint of endpointsToTest) {
+        try {
+            const response = await axios.get(
+                `${config.YAMPI_API}${endpoint}`,
+                {
+                    headers: {
+                        'User-Token': config.YAMPI_TOKEN,
+                        'User-Secret-Key': config.YAMPI_SECRET_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+            
+            results.push({
+                endpoint,
+                status: response.status,
+                exists: true
+            });
+            
+        } catch (error) {
+            results.push({
+                endpoint,
+                status: error.response?.status || 'error',
+                exists: error.response?.status !== 404
+            });
+        }
+    }
+    
+    res.json({
+        message: 'Descoberta de endpoints',
+        results,
+        endpoints_validos: results.filter(r => r.exists)
+    });
+});
