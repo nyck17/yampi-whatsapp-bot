@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO DEFINITIVA 2.2 - Correção Final para Ativação do Estoque
+// servidor.js - VERSÃO DEFINITIVA 2.3 - Ativando o Rastreamento de Inventário no Produto Pai
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -119,11 +119,7 @@ async function criarProdutoCompleto(dados) {
                 price_sale: precoVenda.toString(),
                 price_cost: (precoVenda * 0.6).toFixed(2),
                 blocked_sale: false,
-                
-                // --- INÍCIO DA CORREÇÃO DE ESTOQUE ---
-                manage_stock: true, // ESSA LINHA ATIVA O CONTROLE DE ESTOQUE
-                // --- FIM DA CORREÇÃO DE ESTOQUE ---
-                
+                manage_stock: true,
                 ...(precoPromocional && { price_discount: precoPromocional.toString() }),
                 active: true,
                 variations_values_ids: [valueId]
@@ -140,6 +136,12 @@ async function criarProdutoCompleto(dados) {
             has_variations: true,
             simple: false,
             weight: 0.5, height: 10, width: 15, length: 20,
+            
+            // --- INÍCIO DA CORREÇÃO FINAL DE ESTOQUE ---
+            manage_stock: true,     // DIZ QUE O PRODUTO PAI GERENCIA ESTOQUE
+            track_inventory: true,  // DIZ PARA RASTREAR O INVENTÁRIO (CRÍTICO)
+            // --- FIM DA CORREÇÃO FINAL DE ESTOQUE ---
+
             skus: skus
         };
 
