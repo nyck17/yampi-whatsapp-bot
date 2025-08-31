@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO DEFINITIVA 2.3 - Ativando o Rastreamento de Inventário no Produto Pai
+// servidor.js - VERSÃO DEFINITIVA 3.0 - Estratégia de Dois Passos: Criar Produto, Depois Ativar Estoque
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -31,7 +31,6 @@ const YAMPI_VARIATIONS = {
 let simulatedMessages = [];
 
 // --- FUNÇÕES AUXILIARES ---
-
 function log(message) {
     const timestamp = new Date().toLocaleString('pt-BR');
     const logMessage = `[${timestamp}] ${message}`;
@@ -98,77 +97,90 @@ function extrairDados(message) {
 
 // --- FUNÇÃO PRINCIPAL ---
 async function criarProdutoCompleto(dados) {
-    try {
-        const brandId = await obterBrandIdValido();
-        const precoVenda = parseFloat(dados.preco);
-        let precoPromocional = null;
-        if (dados.desconto) precoPromocional = precoVenda * (1 - dados.desconto / 100);
-        else if (dados.precoPromocional) precoPromocional = parseFloat(dados.precoPromocional);
+    const brandId = await obterBrandIdValido();
+    const precoVenda = parseFloat(dados.preco);
+    let precoPromocional = null;
+    if (dados.desconto) precoPromocional = precoVenda * (1 - dados.desconto / 100);
+    else if (dados.precoPromocional) precoPromocional = parseFloat(dados.precoPromocional);
 
-        log('🚀 Montando payload para a API oficial da Yampi com controle de estoque...');
+    const headers = {
+        'User-Token': config.YAMPI_TOKEN,
+        'User-Secret-Key': config.YAMPI_SECRET_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    };
 
-        const skus = dados.tamanhos.map(tamanho => {
-            const valueId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
-            if (!valueId) {
-                log(`❌ Tamanho inválido "${tamanho}" não encontrado no mapeamento.`);
-                return null;
-            }
-            return {
-                sku: `${gerarSKU(dados.nome, 4)}-${tamanho.toUpperCase()}`,
-                quantity: dados.estoque[tamanho] || 0,
-                price_sale: precoVenda.toString(),
-                price_cost: (precoVenda * 0.6).toFixed(2),
-                blocked_sale: false,
-                manage_stock: true,
-                ...(precoPromocional && { price_discount: precoPromocional.toString() }),
-                active: true,
-                variations_values_ids: [valueId]
-            };
-        }).filter(Boolean);
-
-        if (skus.length !== dados.tamanhos.length) throw new Error("Um ou mais tamanhos são inválidos.");
-
-        const yampiPayload = {
-            name: dados.nome,
-            description: dados.descricao || `${dados.nome} - Produto de qualidade`,
-            brand_id: brandId,
+    // --- PASSO 1: CRIAR O PRODUTO E AS VARIAÇÕES (SEM ESTOQUE) ---
+    log('🚀 PASSO 1: Criando o produto e as variações...');
+    const skusPayload = dados.tamanhos.map(tamanho => {
+        const valueId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
+        if (!valueId) { log(`❌ Tamanho inválido "${tamanho}"`); return null; }
+        return {
+            sku: `${gerarSKU(dados.nome, 4)}-${tamanho.toUpperCase()}`,
+            price_sale: precoVenda.toString(),
+            price_cost: (precoVenda * 0.6).toFixed(2),
+            blocked_sale: false,
+            ...(precoPromocional && { price_discount: precoPromocional.toString() }),
             active: true,
-            has_variations: true,
-            simple: false,
-            weight: 0.5, height: 10, width: 15, length: 20,
-            
-            // --- INÍCIO DA CORREÇÃO FINAL DE ESTOQUE ---
-            manage_stock: true,     // DIZ QUE O PRODUTO PAI GERENCIA ESTOQUE
-            track_inventory: true,  // DIZ PARA RASTREAR O INVENTÁRIO (CRÍTICO)
-            // --- FIM DA CORREÇÃO FINAL DE ESTOQUE ---
-
-            skus: skus
+            variations_values_ids: [valueId]
         };
+    }).filter(Boolean);
 
-        log('📦 Enviando produto e SKUs diretamente para a Yampi...');
-        
-        const endpoint = `${config.YAMPI_API}/catalog/products`;
-        const headers = {
-            'User-Token': config.YAMPI_TOKEN,
-            'User-Secret-Key': config.YAMPI_SECRET_KEY,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        };
+    if (skusPayload.length !== dados.tamanhos.length) throw new Error("Um ou mais tamanhos são inválidos.");
 
-        const response = await axios.post(endpoint, yampiPayload, { headers });
-        const produtoCriado = response.data.data;
-        log(`✅ Produto criado com sucesso na Yampi! ID: ${produtoCriado.id}`);
-        return produtoCriado;
+    const productPayload = {
+        name: dados.nome,
+        description: dados.descricao || `${dados.nome} - Produto de qualidade`,
+        brand_id: brandId,
+        active: true,
+        has_variations: true,
+        skus: skusPayload
+    };
 
+    let produtoCriado;
+    try {
+        const response = await axios.post(`${config.YAMPI_API}/catalog/products`, productPayload, { headers });
+        produtoCriado = response.data.data;
+        log(`✅ Produto e SKUs criados com sucesso! ID do Produto: ${produtoCriado.id}`);
     } catch (error) {
-        const errorData = error.response?.data;
-        log(`❌ ERRO GERAL ao criar produto na Yampi: ${JSON.stringify(errorData, null, 2) || error.message}`);
-        throw new Error(errorData?.errors ? JSON.stringify(errorData.errors) : 'Erro na API da Yampi.');
+        log(`❌ ERRO no PASSO 1 ao criar o produto: ${JSON.stringify(error.response?.data)}`);
+        throw new Error("Falha ao criar o produto base.");
     }
+    
+    // --- PASSO 2: ATIVAR E ADICIONAR ESTOQUE PARA CADA SKU CRIADO ---
+    log('🚀 PASSO 2: Ativando e adicionando estoque para cada variação...');
+
+    // O objeto 'produtoCriado' que a Yampi retorna já contém os SKUs com seus novos IDs
+    const skusCriados = produtoCriado.skus.data;
+
+    for (const sku of skusCriados) {
+        // Precisamos descobrir a qual tamanho (P, M, G) este SKU pertence para pegar o estoque correto
+        const valueId = sku.variations.data[0].value_id;
+        const tamanho = Object.keys(YAMPI_VARIATIONS.TAMANHO.values).find(key => YAMPI_VARIATIONS.TAMANHO.values[key] === valueId);
+        
+        if (tamanho) {
+            const estoqueParaEsteTamanho = dados.estoque[tamanho] || 0;
+            const stockPayload = {
+                quantity: estoqueParaEsteTamanho
+            };
+
+            try {
+                log(`- Adicionando ${estoqueParaEsteTamanho} unidades de estoque para o SKU ${sku.sku} (Tamanho: ${tamanho})`);
+                await axios.post(`${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`, stockPayload, { headers });
+                log(`  ✅ Estoque para ${tamanho} adicionado.`);
+            } catch (error) {
+                log(`  ❌ ERRO no PASSO 2 ao adicionar estoque para o SKU ${sku.id}: ${JSON.stringify(error.response?.data)}`);
+                // Não lançamos um erro aqui para tentar adicionar estoque nos outros
+            }
+        }
+    }
+
+    log('✅ Processo de criação finalizado!');
+    return produtoCriado;
 }
 
-// --- ROTAS DO SERVIDOR ---
-// (O restante do código não precisa de alterações)
+// --- ROTAS DO SERVIDOR (sem alterações) ---
+// (O restante do código é idêntico à versão anterior)
 
 app.post('/webhook', async (req, res) => {
     try {
@@ -220,7 +232,6 @@ async function simularResposta(phone, message) {
     log(`Resposta simulada para ${phone}: ${message.substring(0, 50)}...`);
 }
 
-// Rota de Teste Rápido
 app.get('/test-create', async (req, res) => {
     try {
         const dadosTeste = {
@@ -228,7 +239,7 @@ app.get('/test-create', async (req, res) => {
             tamanhos: ['P', 'M', 'G', 'GG'], estoque: { 'P': 2, 'M': 5, 'G': 6, 'GG': 3 },
             descricao: 'Produto de teste completo criado diretamente na Yampi'
         };
-        log('🚀 INICIANDO TESTE DE CRIAÇÃO DIRETA NA YAMPI...');
+        log('🚀 INICIANDO TESTE DE CRIAÇÃO DIRETA NA YAMPI (Estratégia de 2 Passos)...');
         const produto = await criarProdutoCompleto(dadosTeste);
         res.json({
             success: true, message: '✅ PRODUTO DE TESTE CRIADO DIRETAMENTE NA YAMPI!',
@@ -241,13 +252,11 @@ app.get('/test-create', async (req, res) => {
     }
 });
 
-// Rotas da Interface
 app.get('/', (req, res) => res.send(`<h1>Servidor da Automação Yampi no ar.</h1><p><a href="/test-create">Clique aqui para fazer um teste rápido.</a></p><p><a href="/whatsapp">Clique aqui para ir ao simulador de WhatsApp.</a></p>`));
 app.get('/messages', (req, res) => res.json({ messages: simulatedMessages }));
 app.get('/whatsapp', (req, res) => {
     res.send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>WhatsApp Simulator</title><style>body{font-family:sans-serif;max-width:450px;margin:20px auto;background:#e5ddd5}#chat{background:#ece5dd;height:400px;overflow-y:auto;padding:10px;border:1px solid #ccc}.msg{margin:10px 0;padding:10px;border-radius:8px;max-width:85%}.sent{background:#dcf8c6;margin-left:auto}.received{background:white}#input{display:flex;padding:10px}textarea{flex:1;padding:10px;border-radius:15px;margin-right:10px}button{background:#075e54;color:white;border:none;border-radius:50%;width:50px;height:50px;cursor:pointer}</style></head><body><div id="chat-container"><div id="chat"></div><div id="input"><textarea id="messageInput" placeholder="Digite sua mensagem..."></textarea><button onclick="sendMessage()">▶</button></div></div><script>const chat=document.getElementById('chat'),input=document.getElementById('messageInput');async function sendMessage(){const msg=input.value.trim();if(!msg)return;addMessage(msg,'sent');input.value='';const webhookData={data:{key:{remoteJid:'test-user@s.whatsapp.net'},message:{conversation:msg}}};await fetch('/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(webhookData)});setTimeout(loadMessages,1500)}function addMessage(text,type){const div=document.createElement('div');div.className='msg '+type;div.innerText=text;chat.appendChild(div);chat.scrollTop=chat.scrollHeight}async function loadMessages(){const res=await fetch('/messages');const data=await res.json();const lastResponse=data.messages.filter(m=>m.type==='resposta').pop();if(lastResponse)addMessage(lastResponse.message,'received')}</script></body></html>`);
 });
-
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(config.PORT, () => {
