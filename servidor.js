@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO DEFINITIVA 3.1 - Corrigindo "Falha ao criar o produto base"
+// servidor.js - VERSÃO DEFINITIVA 3.2 - Corrigindo Leitura da Resposta da API (Cannot read 'data')
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -120,7 +120,7 @@ async function criarProdutoCompleto(dados) {
             price_sale: precoVenda.toString(),
             price_cost: (precoVenda * 0.6).toFixed(2),
             blocked_sale: false,
-            weight: 0.5, height: 10, width: 15, length: 20, // Dimensões no SKU
+            weight: 0.5, height: 10, width: 15, length: 20,
             ...(precoPromocional && { price_discount: precoPromocional.toString() }),
             active: true,
             variations_values_ids: [valueId]
@@ -135,16 +135,8 @@ async function criarProdutoCompleto(dados) {
         brand_id: brandId,
         active: true,
         has_variations: true,
-
-        // --- INÍCIO DA CORREÇÃO ---
-        // Readicionando campos que são obrigatórios para o produto base
         simple: false,
-        weight: 0.5,
-        height: 10,
-        width: 15,
-        length: 20,
-        // --- FIM DA CORREÇÃO ---
-
+        weight: 0.5, height: 10, width: 15, length: 20,
         skus: skusPayload
     };
 
@@ -161,24 +153,32 @@ async function criarProdutoCompleto(dados) {
     // --- PASSO 2: Ativar e Adicionar Estoque para Cada SKU Criado ---
     log('🚀 PASSO 2: Ativando e adicionando estoque para cada variação...');
 
-    const skusCriados = produtoCriado.skus.data;
+    // --- INÍCIO DA CORREÇÃO ---
+    // Acessamos 'produtoCriado.skus' diretamente. Adicionamos '|| []' para segurança.
+    const skusCriados = produtoCriado.skus || [];
+    // --- FIM DA CORREÇÃO ---
 
     for (const sku of skusCriados) {
-        const valueId = sku.variations.data[0].value_id;
-        const tamanho = Object.keys(YAMPI_VARIATIONS.TAMANHO.values).find(key => YAMPI_VARIATIONS.TAMANHO.values[key] === valueId);
-        
-        if (tamanho) {
-            const estoqueParaEsteTamanho = dados.estoque[tamanho] || 0;
-            const stockPayload = {
-                quantity: estoqueParaEsteTamanho
-            };
+        // --- INÍCIO DA CORREÇÃO ---
+        // Acessamos 'sku.variations' diretamente. Adicionamos verificações de segurança.
+        const variationData = sku.variations && sku.variations[0] ? sku.variations[0] : null;
+        // --- FIM DA CORREÇÃO ---
 
-            try {
-                log(`- Adicionando ${estoqueParaEsteTamanho} unidades de estoque para o SKU ${sku.sku} (Tamanho: ${tamanho})`);
-                await axios.post(`${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`, stockPayload, { headers });
-                log(`  ✅ Estoque para ${tamanho} adicionado.`);
-            } catch (error) {
-                log(`  ❌ ERRO no PASSO 2 ao adicionar estoque para o SKU ${sku.id}: ${JSON.stringify(error.response?.data)}`);
+        if (variationData) {
+            const valueId = variationData.value_id;
+            const tamanho = Object.keys(YAMPI_VARIATIONS.TAMANHO.values).find(key => YAMPI_VARIATIONS.TAMANHO.values[key] === valueId);
+            
+            if (tamanho) {
+                const estoqueParaEsteTamanho = dados.estoque[tamanho] || 0;
+                const stockPayload = { quantity: estoqueParaEsteTamanho };
+
+                try {
+                    log(`- Adicionando ${estoqueParaEsteTamanho} unidades de estoque para o SKU ${sku.sku} (Tamanho: ${tamanho})`);
+                    await axios.post(`${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`, stockPayload, { headers });
+                    log(`  ✅ Estoque para ${tamanho} adicionado.`);
+                } catch (error) {
+                    log(`  ❌ ERRO no PASSO 2 ao adicionar estoque para o SKU ${sku.id}: ${JSON.stringify(error.response?.data)}`);
+                }
             }
         }
     }
@@ -264,6 +264,7 @@ app.get('/messages', (req, res) => res.json({ messages: simulatedMessages }));
 app.get('/whatsapp', (req, res) => {
     res.send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>WhatsApp Simulator</title><style>body{font-family:sans-serif;max-width:450px;margin:20px auto;background:#e5ddd5}#chat{background:#ece5dd;height:400px;overflow-y:auto;padding:10px;border:1px solid #ccc}.msg{margin:10px 0;padding:10px;border-radius:8px;max-width:85%}.sent{background:#dcf8c6;margin-left:auto}.received{background:white}#input{display:flex;padding:10px}textarea{flex:1;padding:10px;border-radius:15px;margin-right:10px}button{background:#075e54;color:white;border:none;border-radius:50%;width:50px;height:50px;cursor:pointer}</style></head><body><div id="chat-container"><div id="chat"></div><div id="input"><textarea id="messageInput" placeholder="Digite sua mensagem..."></textarea><button onclick="sendMessage()">▶</button></div></div><script>const chat=document.getElementById('chat'),input=document.getElementById('messageInput');async function sendMessage(){const msg=input.value.trim();if(!msg)return;addMessage(msg,'sent');input.value='';const webhookData={data:{key:{remoteJid:'test-user@s.whatsapp.net'},message:{conversation:msg}}};await fetch('/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(webhookData)});setTimeout(loadMessages,1500)}function addMessage(text,type){const div=document.createElement('div');div.className='msg '+type;div.innerText=text;chat.appendChild(div);chat.scrollTop=chat.scrollHeight}async function loadMessages(){const res=await fetch('/messages');const data=await res.json();const lastResponse=data.messages.filter(m=>m.type==='resposta').pop();if(lastResponse)addMessage(lastResponse.message,'received')}</script></body></html>`);
 });
+
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(config.PORT, () => {
