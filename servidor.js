@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO DEFINITIVA 3.0 - Estratégia de Dois Passos: Criar Produto, Depois Ativar Estoque
+// servidor.js - VERSÃO DEFINITIVA 3.1 - Corrigindo "Falha ao criar o produto base"
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -110,7 +110,7 @@ async function criarProdutoCompleto(dados) {
         'Accept': 'application/json'
     };
 
-    // --- PASSO 1: CRIAR O PRODUTO E AS VARIAÇÕES (SEM ESTOQUE) ---
+    // --- PASSO 1: Criar o Produto e Suas Variações ---
     log('🚀 PASSO 1: Criando o produto e as variações...');
     const skusPayload = dados.tamanhos.map(tamanho => {
         const valueId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
@@ -120,6 +120,7 @@ async function criarProdutoCompleto(dados) {
             price_sale: precoVenda.toString(),
             price_cost: (precoVenda * 0.6).toFixed(2),
             blocked_sale: false,
+            weight: 0.5, height: 10, width: 15, length: 20, // Dimensões no SKU
             ...(precoPromocional && { price_discount: precoPromocional.toString() }),
             active: true,
             variations_values_ids: [valueId]
@@ -134,6 +135,16 @@ async function criarProdutoCompleto(dados) {
         brand_id: brandId,
         active: true,
         has_variations: true,
+
+        // --- INÍCIO DA CORREÇÃO ---
+        // Readicionando campos que são obrigatórios para o produto base
+        simple: false,
+        weight: 0.5,
+        height: 10,
+        width: 15,
+        length: 20,
+        // --- FIM DA CORREÇÃO ---
+
         skus: skusPayload
     };
 
@@ -147,14 +158,12 @@ async function criarProdutoCompleto(dados) {
         throw new Error("Falha ao criar o produto base.");
     }
     
-    // --- PASSO 2: ATIVAR E ADICIONAR ESTOQUE PARA CADA SKU CRIADO ---
+    // --- PASSO 2: Ativar e Adicionar Estoque para Cada SKU Criado ---
     log('🚀 PASSO 2: Ativando e adicionando estoque para cada variação...');
 
-    // O objeto 'produtoCriado' que a Yampi retorna já contém os SKUs com seus novos IDs
     const skusCriados = produtoCriado.skus.data;
 
     for (const sku of skusCriados) {
-        // Precisamos descobrir a qual tamanho (P, M, G) este SKU pertence para pegar o estoque correto
         const valueId = sku.variations.data[0].value_id;
         const tamanho = Object.keys(YAMPI_VARIATIONS.TAMANHO.values).find(key => YAMPI_VARIATIONS.TAMANHO.values[key] === valueId);
         
@@ -170,7 +179,6 @@ async function criarProdutoCompleto(dados) {
                 log(`  ✅ Estoque para ${tamanho} adicionado.`);
             } catch (error) {
                 log(`  ❌ ERRO no PASSO 2 ao adicionar estoque para o SKU ${sku.id}: ${JSON.stringify(error.response?.data)}`);
-                // Não lançamos um erro aqui para tentar adicionar estoque nos outros
             }
         }
     }
@@ -180,7 +188,6 @@ async function criarProdutoCompleto(dados) {
 }
 
 // --- ROTAS DO SERVIDOR (sem alterações) ---
-// (O restante do código é idêntico à versão anterior)
 
 app.post('/webhook', async (req, res) => {
     try {
