@@ -1,3 +1,7 @@
+console.log("--- DEBUG: O arquivo servidor.js começou a ser executado ---");
+// O resto do seu código continua aqui
+const express = require('express');
+// ...
 // servidor.js - VERSÃO FINAL 5.0 - Loop de Verificação Ativa para SKUs
 const express = require('express');
 const axios = require('axios');
@@ -197,3 +201,4 @@ async function criarProdutoCompleto(dados) {
 // --- ROTAS DO SERVIDOR ---
 // (O restante do código não precisa de alterações)
 // ...
+
