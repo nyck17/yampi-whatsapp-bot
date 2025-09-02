@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO DEFINITIVA 3.4 - Adicionando Pausa Estratégica de 3s
+// servidor.js - VERSÃO FINAL 4.0 - Estratégia de 4 Passos (Criar -> Habilitar -> Buscar -> Adicionar Estoque)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -18,9 +18,7 @@ const config = {
 const YAMPI_VARIATIONS = {
     TAMANHO: {
         variation_id: 1190509,
-        values: {
-            'P': 18183531, 'M': 18183532, 'G': 18183533, 'GG': 18183534
-        }
+        values: { 'P': 18183531, 'M': 18183532, 'G': 18183533, 'GG': 18183534 }
     }
 };
 
@@ -96,10 +94,8 @@ async function criarProdutoCompleto(dados) {
     else if (dados.precoPromocional) precoPromocional = parseFloat(dados.precoPromocional);
 
     const headers = {
-        'User-Token': config.YAMPI_TOKEN,
-        'User-Secret-Key': config.YAMPI_SECRET_KEY,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'User-Token': config.YAMPI_TOKEN, 'User-Secret-Key': config.YAMPI_SECRET_KEY,
+        'Content-Type': 'application/json', 'Accept': 'application/json'
     };
 
     // --- PASSO 1: Criar o Produto e Suas Variações ---
@@ -108,17 +104,13 @@ async function criarProdutoCompleto(dados) {
         const valueId = YAMPI_VARIATIONS.TAMANHO.values[tamanho.toUpperCase()];
         if (!valueId) { log(`❌ Tamanho inválido "${tamanho}"`); return null; }
         return {
-            sku: `${gerarSKU(dados.nome, 4)}-${tamanho.toUpperCase()}`,
-            price_sale: precoVenda.toString(),
-            price_cost: (precoVenda * 0.6).toFixed(2),
-            blocked_sale: false,
+            sku: `${gerarSKU(dados.nome, 4)}-${tamanho.toUpperCase()}`, price_sale: precoVenda.toString(),
+            price_cost: (precoVenda * 0.6).toFixed(2), blocked_sale: false,
             weight: 0.5, height: 10, width: 15, length: 20,
             ...(precoPromocional && { price_discount: precoPromocional.toString() }),
-            active: true,
-            variations_values_ids: [valueId]
+            active: true, variations_values_ids: [valueId]
         };
     }).filter(Boolean);
-
     if (skusPayload.length !== dados.tamanhos.length) throw new Error("Um ou mais tamanhos são inválidos.");
 
     const productPayload = {
@@ -140,27 +132,29 @@ async function criarProdutoCompleto(dados) {
     
     // --- PASSO 2: Ativar o Gerenciamento de Estoque no Produto Pai ---
     log('🚀 PASSO 2: Ativando o gerenciamento de estoque no produto pai...');
-    const updatePayload = {
-        manage_stock: true,
-        track_inventory: true
-    };
     try {
-        await axios.put(`${config.YAMPI_API}/catalog/products/${produtoCriado.id}`, updatePayload, { headers });
-        log('✅ PASSO 2 finalizado! Gerenciamento ativado no produto pai.');
+        await axios.put(`${config.YAMPI_API}/catalog/products/${produtoCriado.id}`, { manage_stock: true, track_inventory: true }, { headers });
+        log('✅ PASSO 2 finalizado!');
     } catch (error) {
         log(`❌ ERRO no PASSO 2: ${JSON.stringify(error.response?.data)}`);
-        throw new Error("Falha ao ativar o gerenciamento de estoque no produto pai.");
+        throw new Error("Falha ao ativar o estoque no produto pai.");
     }
 
-    // --- INÍCIO DA MUDANÇA: PAUSA ESTRATÉGICA ---
-    log('⏸️ Aguardando 3 segundos para a Yampi processar a ativação do estoque...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    log('✅ Pausa finalizada. Continuando para o Passo 3.');
-    // --- FIM DA MUDANÇA ---
+    // --- PASSO 3 (NOVO): Buscar o produto novamente para obter os IDs dos SKUs ---
+    log('🚀 PASSO 3: Buscando o produto recém-criado para obter os dados completos...');
+    let produtoCompleto;
+    try {
+        const response = await axios.get(`${config.YAMPI_API}/catalog/products/${produtoCriado.id}`, { headers });
+        produtoCompleto = response.data.data;
+        log(`✅ PASSO 3 finalizado! Dados completos do produto obtidos.`);
+    } catch (error) {
+        log(`❌ ERRO no PASSO 3: ${JSON.stringify(error.response?.data)}`);
+        throw new Error("Falha ao buscar os dados do produto recém-criado.");
+    }
 
-    // --- PASSO 3: Adicionar Estoque para Cada SKU Criado ---
-    log('🚀 PASSO 3: Adicionando estoque para cada variação...');
-    const skusCriados = produtoCriado.skus || [];
+    // --- PASSO 4: Adicionar Estoque para Cada SKU ---
+    log('🚀 PASSO 4: Adicionando estoque para cada variação...');
+    const skusCriados = produtoCompleto.skus || [];
     for (const sku of skusCriados) {
         const variationData = sku.variations && sku.variations[0] ? sku.variations[0] : null;
         if (variationData) {
@@ -168,25 +162,22 @@ async function criarProdutoCompleto(dados) {
             const tamanho = Object.keys(YAMPI_VARIATIONS.TAMANHO.values).find(key => YAMPI_VARIATIONS.TAMANHO.values[key] === valueId);
             if (tamanho) {
                 const estoqueParaEsteTamanho = dados.estoque[tamanho] || 0;
-                const stockPayload = { quantity: estoqueParaEsteTamanho };
                 try {
                     log(`- Adicionando ${estoqueParaEsteTamanho} unidades para o SKU ${sku.sku}`);
-                    await axios.post(`${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`, stockPayload, { headers });
+                    await axios.post(`${config.YAMPI_API}/catalog/skus/${sku.id}/stocks`, { quantity: estoqueParaEsteTamanho }, { headers });
                     log(`  ✅ Estoque para ${tamanho} adicionado.`);
                 } catch (error) {
-                    log(`  ❌ ERRO no PASSO 3 para o SKU ${sku.id}: ${JSON.stringify(error.response?.data)}`);
+                    log(`  ❌ ERRO no PASSO 4 para o SKU ${sku.id}: ${JSON.stringify(error.response?.data)}`);
                 }
             }
         }
     }
 
     log('✅ Processo de criação finalizado!');
-    return produtoCriado;
+    return produtoCompleto;
 }
 
-// --- ROTAS DO SERVIDOR (sem alterações) ---
-// (O restante do código é idêntico à versão anterior)
-
+// --- ROTAS DO SERVIDOR ---
 app.post('/webhook', async (req, res) => {
     try {
         const { data } = req.body;
@@ -244,7 +235,7 @@ app.get('/test-create', async (req, res) => {
             tamanhos: ['P', 'M', 'G', 'GG'], estoque: { 'P': 2, 'M': 5, 'G': 6, 'GG': 3 },
             descricao: 'Produto de teste completo criado diretamente na Yampi'
         };
-        log('🚀 INICIANDO TESTE (Estratégia de 3 Passos com Pausa)...');
+        log('🚀 INICIANDO TESTE (Estratégia de 4 Passos)...');
         const produto = await criarProdutoCompleto(dadosTeste);
         res.json({
             success: true, message: '✅ PRODUTO DE TESTE CRIADO DIRETAMENTE NA YAMPI!',
