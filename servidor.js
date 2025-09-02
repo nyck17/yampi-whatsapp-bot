@@ -1,4 +1,4 @@
-// servidor.js - VERSÃO FINAL 4.0 - Estratégia de 4 Passos (Criar -> Habilitar -> Buscar -> Adicionar Estoque)
+// servidor.js - VERSÃO FINAL 4.1 - Pausa Estratégica ANTES de Buscar o Produto
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -140,7 +140,12 @@ async function criarProdutoCompleto(dados) {
         throw new Error("Falha ao ativar o estoque no produto pai.");
     }
 
-    // --- PASSO 3 (NOVO): Buscar o produto novamente para obter os IDs dos SKUs ---
+    // --- PAUSA ESTRATÉGICA ---
+    log('⏸️ Aguardando 5 segundos para a Yampi processar as variações...');
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Aumentei para 5 segundos por segurança
+    log('✅ Pausa finalizada.');
+    
+    // --- PASSO 3: Buscar o produto novamente para obter os IDs dos SKUs ---
     log('🚀 PASSO 3: Buscando o produto recém-criado para obter os dados completos...');
     let produtoCompleto;
     try {
@@ -155,6 +160,9 @@ async function criarProdutoCompleto(dados) {
     // --- PASSO 4: Adicionar Estoque para Cada SKU ---
     log('🚀 PASSO 4: Adicionando estoque para cada variação...');
     const skusCriados = produtoCompleto.skus || [];
+    if (skusCriados.length === 0) {
+        log('⚠️ ALERTA: Nenhuma variação (SKU) foi encontrada no produto buscado. O estoque não pode ser adicionado.');
+    }
     for (const sku of skusCriados) {
         const variationData = sku.variations && sku.variations[0] ? sku.variations[0] : null;
         if (variationData) {
@@ -178,6 +186,8 @@ async function criarProdutoCompleto(dados) {
 }
 
 // --- ROTAS DO SERVIDOR ---
+// O restante do código permanece o mesmo
+
 app.post('/webhook', async (req, res) => {
     try {
         const { data } = req.body;
@@ -235,7 +245,7 @@ app.get('/test-create', async (req, res) => {
             tamanhos: ['P', 'M', 'G', 'GG'], estoque: { 'P': 2, 'M': 5, 'G': 6, 'GG': 3 },
             descricao: 'Produto de teste completo criado diretamente na Yampi'
         };
-        log('🚀 INICIANDO TESTE (Estratégia de 4 Passos)...');
+        log('🚀 INICIANDO TESTE FINAL (Com Pausa)...');
         const produto = await criarProdutoCompleto(dadosTeste);
         res.json({
             success: true, message: '✅ PRODUTO DE TESTE CRIADO DIRETAMENTE NA YAMPI!',
