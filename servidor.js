@@ -1,8 +1,4 @@
-console.log("--- DEBUG: O arquivo servidor.js começou a ser executado ---");
-// O resto do seu código continua aqui
-const express = require('express');
-// ...
-// servidor.js - VERSÃO FINAL 5.0 - Loop de Verificação Ativa para SKUs
+// servidor.js - VERSÃO FINAL 5.1 - Corrigido erro de sintaxe e mantendo a lógica de 4 Passos
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -145,7 +141,7 @@ async function criarProdutoCompleto(dados) {
         throw new Error("Falha ao ativar o estoque no produto pai.");
     }
     
-    // PASSO 3 (NOVO): Loop de Verificação Ativa
+    // PASSO 3: Loop de Verificação Ativa
     log('🚀 PASSO 3: Iniciando verificação ativa das variações...');
     let produtoCompleto;
     let tentativas = 0;
@@ -160,7 +156,7 @@ async function criarProdutoCompleto(dados) {
         if (produtoBuscado.skus && produtoBuscado.skus.length > 0) {
             log(`✅ Variações encontradas na tentativa ${tentativas}!`);
             produtoCompleto = produtoBuscado;
-            break; // Sai do loop
+            break; 
         }
         
         if (tentativas < maxTentativas) {
@@ -199,6 +195,89 @@ async function criarProdutoCompleto(dados) {
 }
 
 // --- ROTAS DO SERVIDOR ---
-// (O restante do código não precisa de alterações)
-// ...
+app.post('/webhook', async (req, res) => {
+    try {
+        const { data } = req.body;
+        if (data && data.message) {
+            const phone = data.key.remoteJid;
+            let message = data.message.conversation || data.message.extendedTextMessage?.text || data.message.imageMessage?.caption || '';
+            if (!message) return res.status(200).json({ success: true });
+            log(`Mensagem de ${phone}: ${message.substring(0, 50)}...`);
+            if (message.toLowerCase().includes('/cadastrar')) await processarProduto(message, phone);
+            else if (message.toLowerCase().includes('/ajuda')) await enviarAjuda(phone);
+        }
+        res.status(200).json({ success: true });
+    } catch (error) {
+        log(`Erro no webhook: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
 
+async function processarProduto(message, phone) {
+    try {
+        await simularResposta(phone, `⏳ Processando seu produto...`);
+        const dados = extrairDados(message);
+        if (!dados.nome || !dados.preco) {
+            await simularResposta(phone, `⚠ Erro: Nome e Preço são obrigatórios!`);
+            return;
+        }
+        const produto = await criarProdutoCompleto(dados);
+        await enviarConfirmacao(phone, produto, dados);
+    } catch (error) {
+        await simularResposta(phone, `⚠ Erro ao criar o produto: ${error.message}`);
+    }
+}
+
+async function enviarConfirmacao(phone, produto, dados) {
+    const totalEstoque = Object.values(dados.estoque).reduce((a, b) => a + (b || 0), 0);
+    const confirmacao = `✅ PRODUTO CRIADO COM SUCESSO!\n📦 ${dados.nome}\n\n🎯 STATUS DA CRIAÇÃO:\n• Produto: ✅ Criado Diretamente na Yampi\n• Variações: ✅ ${dados.tamanhos.join(', ')}\n• Estoque Total: ✅ ${totalEstoque} unidades\n\n🔗 Produto ID: ${produto.id}\n🌐 Painel: https://painel.yampi.com.br/catalog/products/${produto.id}\n\n🎉 PRODUTO PRONTO PARA VENDA!`;
+    await simularResposta(phone, confirmacao);
+}
+
+async function enviarAjuda(phone) {
+    const ajuda = `🤖 AJUDA - AUTOMAÇÃO YAMPI\n\n🔹 PRODUTO COMPLETO (EXEMPLO):\n/cadastrar\nNome: Camiseta Premium\nPreço: R$ 150,00\nTamanhos: P,M,G,GG\nEstoque: P=3,M=8,G=5,GG=2\n\n✅ Campos obrigatórios: Nome e Preço`;
+    await simularResposta(phone, ajuda);
+}
+
+async function simularResposta(phone, message) {
+    const resposta = { timestamp: new Date().toLocaleString('pt-BR'), phone, message, type: 'resposta' };
+    simulatedMessages.push(resposta);
+    log(`Resposta simulada para ${phone}: ${message.substring(0, 50)}...`);
+}
+
+app.get('/test-create', async (req, res) => {
+    try {
+        const dadosTeste = {
+            nome: `Produto Teste Yampi ${Date.now()}`, preco: 129.90, desconto: 15,
+            tamanhos: ['P', 'M', 'G', 'GG'], estoque: { 'P': 2, 'M': 5, 'G': 6, 'GG': 3 },
+            descricao: 'Produto de teste completo criado diretamente na Yampi'
+        };
+        log('🚀 INICIANDO TESTE FINAL (Com Loop de Verificação)...');
+        const produto = await criarProdutoCompleto(dadosTeste);
+        res.json({
+            success: true, message: '✅ PRODUTO DE TESTE CRIADO DIRETAMENTE NA YAMPI!',
+            produto: { id: produto.id, name: produto.name },
+            verificar_painel: `https://painel.yampi.com.br/catalog/products/${produto.id}`
+        });
+    } catch (error) {
+        log(`❌ ERRO NO ENDPOINT DE TESTE: ${error.message}`);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/', (req, res) => res.send(`<h1>Servidor da Automação Yampi no ar.</h1><p><a href="/test-create">Clique aqui para fazer um teste rápido.</a></p><p><a href="/whatsapp">Clique aqui para ir ao simulador de WhatsApp.</a></p>`));
+app.get('/messages', (req, res) => res.json({ messages: simulatedMessages }));
+app.get('/whatsapp', (req, res) => {
+    res.send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>WhatsApp Simulator</title><style>body{font-family:sans-serif;max-width:450px;margin:20px auto;background:#e5ddd5}#chat{background:#ece5dd;height:400px;overflow-y:auto;padding:10px;border:1px solid #ccc}.msg{margin:10px 0;padding:10px;border-radius:8px;max-width:85%}.sent{background:#dcf8c6;margin-left:auto}.received{background:white}#input{display:flex;padding:10px}textarea{flex:1;padding:10px;border-radius:15px;margin-right:10px}button{background:#075e54;color:white;border:none;border-radius:50%;width:50px;height:50px;cursor:pointer}</style></head><body><div id="chat-container"><div id="chat"></div><div id="input"><textarea id="messageInput" placeholder="Digite sua mensagem..."></textarea><button onclick="sendMessage()">▶</button></div></div><script>const chat=document.getElementById('chat'),input=document.getElementById('messageInput');async function sendMessage(){const msg=input.value.trim();if(!msg)return;addMessage(msg,'sent');input.value='';const webhookData={data:{key:{remoteJid:'test-user@s.whatsapp.net'},message:{conversation:msg}}};await fetch('/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(webhookData)});setTimeout(loadMessages,1500)}function addMessage(text,type){const div=document.createElement('div');div.className='msg '+type;div.innerText=text;chat.appendChild(div);chat.scrollTop=chat.scrollHeight}async function loadMessages(){const res=await fetch('/messages');const data=await res.json();const lastResponse=data.messages.filter(m=>m.type==='resposta').pop();if(lastResponse)addMessage(lastResponse.message,'received')}</script></body></html>`);
+});
+
+// --- INICIALIZAÇÃO DO SERVIDOR ---
+app.listen(config.PORT, () => {
+    log(`🚀 Servidor DEFINITIVO rodando na porta ${config.PORT}`);
+    log(`✅ Automação configurada para comunicação direta com a Yampi.`);
+    log(`🔗 Acesse http://localhost:${config.PORT} para a interface (se estiver rodando localmente).`);
+});
+
+// --- TRATAMENTO DE ERROS GLOBAIS ---
+process.on('uncaughtException', (error) => { log(`❌ Erro não capturado: ${error.stack}`); });
+process.on('unhandledRejection', (reason) => { log(`❌ Promise rejeitada: ${reason}`); });
